@@ -219,6 +219,13 @@ public final class Pop3Session {
         return try waitForMultilineData()
     }
 
+    public func retrStream(_ index: Int, sink: ([UInt8]) throws -> Void) throws {
+        try ensureAuthenticated()
+        _ = client.send(.retr(index))
+        try ensureWrite()
+        try streamMultilineData(into: sink)
+    }
+
     public func top(_ index: Int, lines: Int) throws -> [String] {
         try ensureAuthenticated()
         client.expectMultilineResponse()
@@ -242,6 +249,13 @@ public final class Pop3Session {
         _ = client.send(.top(index, lines: lines))
         try ensureWrite()
         return try waitForMultilineData()
+    }
+
+    public func topStream(_ index: Int, lines: Int, sink: ([UInt8]) throws -> Void) throws {
+        try ensureAuthenticated()
+        _ = client.send(.top(index, lines: lines))
+        try ensureWrite()
+        try streamMultilineData(into: sink)
     }
 
     public func list() throws -> [Pop3ListItem] {
@@ -368,6 +382,58 @@ public final class Pop3Session {
                 }
             }
         }
+        throw SessionError.timeout
+    }
+
+    private func streamMultilineData(into sink: ([UInt8]) throws -> Void) throws {
+        var lineBuffer = ByteLineBuffer()
+        var reads = 0
+        var awaitingStatus = true
+        var isFirstLine = true
+
+        while reads < maxReads {
+            let bytes = transport.readAvailable(maxLength: 4096)
+            if bytes.isEmpty {
+                reads += 1
+                continue
+            }
+            client.protocolLogger.logServer(bytes, offset: 0, count: bytes.count)
+            let lines = lineBuffer.append(bytes)
+            for line in lines {
+                if awaitingStatus {
+                    let text = String(decoding: line, as: UTF8.self)
+                    if let response = Pop3Response.parse(text) {
+                        if response.isSuccess {
+                            awaitingStatus = false
+                            continue
+                        }
+                        throw SessionError.pop3Error(message: response.message)
+                    }
+                    continue
+                }
+
+                if line == [0x2e] {
+                    return
+                }
+
+                let dataLine: [UInt8]
+                if line.count >= 2, line[0] == 0x2e, line[1] == 0x2e {
+                    dataLine = Array(line.dropFirst())
+                } else {
+                    dataLine = line
+                }
+
+                if isFirstLine {
+                    try sink(dataLine)
+                    isFirstLine = false
+                } else {
+                    var chunk: [UInt8] = [0x0D, 0x0A]
+                    chunk.append(contentsOf: dataLine)
+                    try sink(chunk)
+                }
+            }
+        }
+
         throw SessionError.timeout
     }
 

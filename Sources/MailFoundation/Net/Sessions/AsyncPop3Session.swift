@@ -138,6 +138,15 @@ public actor AsyncPop3Session {
         return try await waitForMultilineData()
     }
 
+    public func retrStream(
+        _ index: Int,
+        sink: @Sendable ([UInt8]) async throws -> Void
+    ) async throws {
+        try await ensureAuthenticated()
+        _ = try await client.send(.retr(index))
+        try await streamMultilineData(into: sink)
+    }
+
     public func top(_ index: Int, lines: Int) async throws -> [String] {
         try await ensureAuthenticated()
         await client.expectMultilineResponse()
@@ -159,6 +168,16 @@ public actor AsyncPop3Session {
         try await ensureAuthenticated()
         _ = try await client.send(.top(index, lines: lines))
         return try await waitForMultilineData()
+    }
+
+    public func topStream(
+        _ index: Int,
+        lines: Int,
+        sink: @Sendable ([UInt8]) async throws -> Void
+    ) async throws {
+        try await ensureAuthenticated()
+        _ = try await client.send(.top(index, lines: lines))
+        try await streamMultilineData(into: sink)
     }
 
     public func stat() async throws -> Pop3StatResponse {
@@ -283,6 +302,61 @@ public actor AsyncPop3Session {
                 }
             }
         }
+        throw SessionError.timeout
+    }
+
+    private func streamMultilineData(
+        into sink: @Sendable ([UInt8]) async throws -> Void,
+        maxEmptyReads: Int = 10
+    ) async throws {
+        var lineBuffer = ByteLineBuffer()
+        var emptyReads = 0
+        var awaitingStatus = true
+        var isFirstLine = true
+
+        while emptyReads < maxEmptyReads {
+            let chunk = await client.nextChunk()
+            if chunk.isEmpty {
+                emptyReads += 1
+                continue
+            }
+
+            let lines = lineBuffer.append(chunk)
+            for line in lines {
+                if awaitingStatus {
+                    let text = String(decoding: line, as: UTF8.self)
+                    if let response = Pop3Response.parse(text) {
+                        if response.isSuccess {
+                            awaitingStatus = false
+                            continue
+                        }
+                        throw SessionError.pop3Error(message: response.message)
+                    }
+                    continue
+                }
+
+                if line == [0x2e] {
+                    return
+                }
+
+                let dataLine: [UInt8]
+                if line.count >= 2, line[0] == 0x2e, line[1] == 0x2e {
+                    dataLine = Array(line.dropFirst())
+                } else {
+                    dataLine = line
+                }
+
+                if isFirstLine {
+                    try await sink(dataLine)
+                    isFirstLine = false
+                } else {
+                    var chunk: [UInt8] = [0x0D, 0x0A]
+                    chunk.append(contentsOf: dataLine)
+                    try await sink(chunk)
+                }
+            }
+        }
+
         throw SessionError.timeout
     }
 
