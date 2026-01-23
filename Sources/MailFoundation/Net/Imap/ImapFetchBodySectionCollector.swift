@@ -49,6 +49,11 @@ public struct ImapFetchBodyMap: Sendable, Equatable {
     }
 }
 
+public struct ImapFetchBodyQresyncResult: Sendable, Equatable {
+    public let bodies: [ImapFetchBodyMap]
+    public let qresyncEvents: [ImapQresyncEvent]
+}
+
 public enum ImapFetchBodyParser {
     public static func parse(_ messages: [ImapLiteralMessage]) -> [ImapFetchBodyResult] {
         var grouped: [Int: [ImapFetchBodySectionPayload]] = [:]
@@ -67,8 +72,22 @@ public enum ImapFetchBodyParser {
     }
 
     public static func parseMaps(_ messages: [ImapLiteralMessage]) -> [ImapFetchBodyMap] {
-        let results = parse(messages)
-        return results.map { result in
+        maps(from: parse(messages))
+    }
+
+    public static func parseMapsWithQresync(_ messages: [ImapLiteralMessage], validity: UInt32 = 0) -> ImapFetchBodyQresyncResult {
+        let bodies = parseMaps(messages)
+        var events: [ImapQresyncEvent] = []
+        for message in messages {
+            if let event = ImapQresyncEvent.parse(message, validity: validity) {
+                events.append(event)
+            }
+        }
+        return ImapFetchBodyQresyncResult(bodies: bodies, qresyncEvents: events)
+    }
+
+    public static func maps(from results: [ImapFetchBodyResult]) -> [ImapFetchBodyMap] {
+        results.map { result in
             var map: [ImapFetchBodyKey: [UInt8]] = [:]
             for payload in result.bodies {
                 let key = ImapFetchBodyKey(
@@ -117,5 +136,19 @@ public actor ImapFetchBodySectionCollector {
         }
         pending.removeAll()
         return results.sorted { $0.sequence < $1.sequence }
+    }
+
+    public func ingestWithQresync(_ messages: [ImapLiteralMessage], validity: UInt32 = 0) -> ImapFetchBodyQresyncResult {
+        let results = ingest(messages)
+        let bodies = ImapFetchBodyParser.maps(from: results.map {
+            ImapFetchBodyResult(sequence: $0.sequence, bodies: $0.sections)
+        })
+        var events: [ImapQresyncEvent] = []
+        for message in messages {
+            if let event = ImapQresyncEvent.parse(message, validity: validity) {
+                events.append(event)
+            }
+        }
+        return ImapFetchBodyQresyncResult(bodies: bodies, qresyncEvents: events)
     }
 }

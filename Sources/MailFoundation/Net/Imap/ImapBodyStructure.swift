@@ -72,7 +72,7 @@ public indirect enum ImapBodyStructure: Sendable, Equatable {
 
     public func resolve(section: ImapFetchBodySection) -> ImapBodySectionResolution? {
         if section.part.isEmpty {
-            return ImapBodySectionResolution(scope: .message, subsection: section.subsection)
+            return ImapBodySectionResolution(scope: .message(node: self), subsection: section.subsection)
         }
         guard let node = node(for: section.part) else { return nil }
         let id = section.part.map { String($0) }.joined(separator: ".")
@@ -134,13 +134,58 @@ public indirect enum ImapBodyStructure: Sendable, Equatable {
 }
 
 public enum ImapBodySectionScope: Sendable, Equatable {
-    case message
+    case message(node: ImapBodyStructure)
     case part(id: String, node: ImapBodyStructure)
+
+    public var node: ImapBodyStructure {
+        switch self {
+        case .message(let node):
+            return node
+        case .part(_, let node):
+            return node
+        }
+    }
+
+    public var partId: String? {
+        switch self {
+        case .message:
+            return nil
+        case .part(let id, _):
+            return id
+        }
+    }
 }
 
 public struct ImapBodySectionResolution: Sendable, Equatable {
     public let scope: ImapBodySectionScope
     public let subsection: ImapFetchBodySubsection?
+
+    public var contentType: String? {
+        switch scope.node {
+        case .single(let part):
+            return "\(part.type)/\(part.subtype)"
+        case .multipart(let multipart):
+            return "MULTIPART/\(multipart.subtype)"
+        }
+    }
+
+    public var multipartSubtype: String? {
+        if case let .multipart(multipart) = scope.node {
+            return multipart.subtype
+        }
+        return nil
+    }
+
+    public var multipartParameters: [String: String] {
+        if case let .multipart(multipart) = scope.node {
+            return multipart.parameters
+        }
+        return [:]
+    }
+
+    public var boundary: String? {
+        multipartParameters["BOUNDARY"]
+    }
 }
 
 private enum ImapBodyNode: Equatable {

@@ -290,12 +290,20 @@ func imapBodyStructureParsing() {
                 #expect(id == "2")
                 if case .single = node {
                     #expect(resolution.subsection == .header)
+                    #expect(resolution.contentType == "TEXT/HTML")
+                    #expect(resolution.boundary == nil)
                 } else {
                     #expect(Bool(false))
                 }
             } else {
                 #expect(Bool(false))
             }
+        } else {
+            #expect(Bool(false))
+        }
+        if let rootResolution = multipart.resolve(section: .header) {
+            #expect(rootResolution.contentType == "MULTIPART/ALTERNATIVE")
+            #expect(rootResolution.boundary == "abc")
         } else {
             #expect(Bool(false))
         }
@@ -313,6 +321,7 @@ func imapBodyStructureParsing() {
         if let resolution = embedded.resolve(section: .header) {
             if case .message = resolution.scope {
                 #expect(resolution.subsection == .header)
+                #expect(resolution.contentType == "MESSAGE/RFC822")
             } else {
                 #expect(Bool(false))
             }
@@ -485,6 +494,20 @@ func imapFetchBodyMap() {
     #expect(maps.first?.body() == Array("Hello".utf8))
     let text = ImapFetchBodySection(subsection: .text)
     #expect(maps.first?.body(section: text) == Array("abc".utf8))
+}
+
+@Test("IMAP fetch body map with QRESYNC")
+func imapFetchBodyMapWithQresync() {
+    let line1 = "* 2 FETCH (BODY[] {5}"
+    let msg1 = ImapLiteralMessage(line: line1, response: ImapResponse.parse(line1), literal: Array("Hello".utf8))
+    let line2 = "* 2 FETCH (UID 5 MODSEQ (10))"
+    let msg2 = ImapLiteralMessage(line: line2, response: ImapResponse.parse(line2), literal: nil)
+    let line3 = "* VANISHED 6:7"
+    let msg3 = ImapLiteralMessage(line: line3, response: ImapResponse.parse(line3), literal: nil)
+    let result = ImapFetchBodyParser.parseMapsWithQresync([msg1, msg2, msg3], validity: 9)
+    #expect(result.bodies.count == 1)
+    #expect(result.bodies.first?.body() == Array("Hello".utf8))
+    #expect(result.qresyncEvents.count == 2)
 }
 
 @Test("IMAP mailbox UTF-7 decoding")
@@ -1493,6 +1516,40 @@ func asyncImapSessionQueries() async throws {
 }
 
 @available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP session selected state and QRESYNC fetch")
+func asyncImapSessionSelectedStateQresync() async throws {
+    let transport = AsyncStreamTransport()
+    let session = AsyncImapSession(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let selectTask = Task { try await session.select(mailbox: "INBOX") }
+    await transport.yieldIncoming(Array("* OK [UIDVALIDITY 7] Ready\r\n".utf8))
+    await transport.yieldIncoming(Array("* OK [UIDNEXT 10] Next\r\n".utf8))
+    await transport.yieldIncoming(Array("* OK [HIGHESTMODSEQ 55] Modseq\r\n".utf8))
+    await transport.yieldIncoming(Array("A0001 OK SELECT\r\n".utf8))
+    _ = try await selectTask.value
+
+    #expect(await session.selectedMailbox == "INBOX")
+    let selected = await session.selectedState
+    #expect(selected.uidValidity == 7)
+    #expect(selected.uidNext == 10)
+    #expect(selected.highestModSeq == 55)
+
+    let fetchTask = Task { try await session.fetchWithQresync("1", items: "UID MODSEQ") }
+    await transport.yieldIncoming(Array("* 1 FETCH (UID 100 MODSEQ (57))\r\n".utf8))
+    await transport.yieldIncoming(Array("* VANISHED 101:102\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK FETCH\r\n".utf8))
+    let result = try await fetchTask.value
+    #expect(result.responses.count == 1)
+    #expect(result.qresyncEvents.count == 2)
+    let updated = await session.selectedState
+    #expect(updated.highestModSeq == 57)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
 @Test("Async transport factory async-stream backend")
 func asyncTransportFactoryAsyncStream() throws {
     let transport = try AsyncTransportFactory.make(host: "localhost", port: 1, backend: .asyncStream)
@@ -1601,6 +1658,32 @@ func syncImapSessionFlow() throws {
     #expect(search.ids == [1, 2, 3])
     let status = try session.status(mailbox: "INBOX", items: ["MESSAGES", "UIDNEXT"])
     #expect(status.items["MESSAGES"] == 2)
+}
+
+@Test("Sync IMAP session selected state and QRESYNC fetch")
+func syncImapSessionSelectedStateQresync() throws {
+    let transport = TestTransport(incoming: [
+        Array("* OK Ready\r\n".utf8),
+        Array("* OK [UIDVALIDITY 7] Ready\r\n".utf8),
+        Array("* OK [UIDNEXT 10] Next\r\n".utf8),
+        Array("* OK [HIGHESTMODSEQ 55] Modseq\r\n".utf8),
+        Array("A0001 OK SELECT\r\n".utf8),
+        Array("* 1 FETCH (UID 100 MODSEQ (57))\r\n".utf8),
+        Array("* VANISHED 101:102\r\n".utf8),
+        Array("A0002 OK FETCH\r\n".utf8)
+    ])
+    let session = ImapSession(transport: transport, maxReads: 6)
+    _ = try session.connect()
+    _ = try session.select(mailbox: "INBOX")
+    #expect(session.selectedMailbox == "INBOX")
+    #expect(session.selectedState.uidValidity == 7)
+    #expect(session.selectedState.uidNext == 10)
+    #expect(session.selectedState.highestModSeq == 55)
+
+    let result = try session.fetchWithQresync("1", items: "UID MODSEQ")
+    #expect(result.responses.count == 1)
+    #expect(result.qresyncEvents.count == 2)
+    #expect(session.selectedState.highestModSeq == 57)
 }
 
 class TestTransport: Transport {
