@@ -95,6 +95,7 @@ public enum ImapMailboxAttribute: Sendable, Equatable {
 public struct ImapMailbox: Sendable, Equatable {
     public let kind: ImapMailboxListKind
     public let name: String
+    public let decodedName: String
     public let delimiter: String?
     public let rawAttributes: [String]
     public let attributes: [ImapMailboxAttribute]
@@ -102,6 +103,7 @@ public struct ImapMailbox: Sendable, Equatable {
     public init(kind: ImapMailboxListKind, name: String, delimiter: String?, attributes: [String]) {
         self.kind = kind
         self.name = name
+        self.decodedName = ImapMailboxEncoding.decode(name)
         self.delimiter = delimiter
         self.rawAttributes = attributes
         self.attributes = attributes.map { ImapMailboxAttribute(rawValue: $0) }

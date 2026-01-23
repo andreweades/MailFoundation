@@ -152,6 +152,7 @@ func imapMailboxListParsing() {
     #expect(list?.attributes == ["\\HasNoChildren"])
     #expect(list?.delimiter == "/")
     #expect(list?.name == "INBOX")
+    #expect(list?.decodedName == "INBOX")
 
     let mailbox = list?.toMailbox()
     #expect(mailbox?.hasAttribute(.hasNoChildren) == true)
@@ -169,6 +170,7 @@ func imapMailboxListParsing() {
     #expect(special?.hasAttribute(.noSelect) == true)
     #expect(special?.hasChildren == true)
     #expect(special?.specialUse == .all)
+    #expect(special?.decodedName == "[Gmail]")
 }
 
 @Test("IMAP list-status parsing")
@@ -311,6 +313,8 @@ func imapFetchBodySectionCollector() async {
     let results = await collector.ingest([])
     #expect(results.count == 1)
     #expect(results.first?.sections.count == 2)
+    let header = results.first?.section(subsection: .header)
+    #expect(header?.data == Array("Hello".utf8))
 }
 
 @Test("IMAP idle event parsing")
@@ -329,6 +333,32 @@ func imapIdleEventParsing() {
 
     let ok = ImapIdleEvent.parse("* OK [ALERT] Foo")
     #expect(ok != nil)
+}
+
+@Test("IMAP idle done command")
+func imapIdleDoneCommand() {
+    let command = ImapCommandKind.idleDone.command(tag: "A0001")
+    #expect(command.serialized == "A0001 DONE\r\n")
+}
+
+@Test("IMAP fetch body parser")
+func imapFetchBodyParser() {
+    let line1 = "* 2 FETCH (BODY[] {5}"
+    let msg1 = ImapLiteralMessage(line: line1, response: ImapResponse.parse(line1), literal: Array("Hello".utf8))
+    let line2 = "* 3 FETCH (BODY[1] {3}"
+    let msg2 = ImapLiteralMessage(line: line2, response: ImapResponse.parse(line2), literal: Array("abc".utf8))
+    let results = ImapFetchBodyParser.parse([msg1, msg2])
+    #expect(results.count == 2)
+    #expect(results.first?.sequence == 2)
+}
+
+@Test("IMAP mailbox UTF-7 decoding")
+func imapMailboxUtf7Decoding() {
+    let encoded = "Archive &AOQ- Stuff"
+    let decoded = ImapMailboxEncoding.decode(encoded)
+    #expect(decoded == "Archive \u{00E4} Stuff")
+    let roundTrip = ImapMailboxEncoding.encode(decoded)
+    #expect(roundTrip == encoded)
 }
 
 @Test("SearchQuery serialization")

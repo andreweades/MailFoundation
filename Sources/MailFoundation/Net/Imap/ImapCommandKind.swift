@@ -31,6 +31,7 @@ public enum ImapCommandKind: Sendable {
     case uidSearch(String)
     case enable([String])
     case idle
+    case idleDone
     case starttls
 
     public func command(tag: String) -> ImapCommand {
@@ -92,6 +93,8 @@ public enum ImapCommandKind: Sendable {
             return ImapCommand(tag: tag, name: "ENABLE", arguments: list)
         case .idle:
             return ImapCommand(tag: tag, name: "IDLE")
+        case .idleDone:
+            return ImapCommand(tag: tag, name: "DONE")
         case .starttls:
             return ImapCommand(tag: tag, name: "STARTTLS")
         }

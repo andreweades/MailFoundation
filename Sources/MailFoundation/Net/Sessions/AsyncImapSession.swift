@@ -213,6 +213,10 @@ public actor AsyncImapSession {
         throw SessionError.timeout
     }
 
+    public func stopIdle() async throws {
+        _ = try await client.send(.idleDone)
+    }
+
     private func waitForGreeting() async -> ImapResponse? {
         while true {
             let messages = await client.nextMessages()

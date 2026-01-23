@@ -212,6 +212,11 @@ public final class ImapSession {
         return events
     }
 
+    public func stopIdle() throws {
+        _ = client.send(.idleDone)
+        try ensureWrite()
+    }
+
     private func waitForGreeting() -> ImapResponse? {
         var reads = 0
         while reads < maxReads {

@@ -28,4 +28,5 @@ public extension ImapCommandKind {
     static func uidSearch(_ query: SearchQuery) -> ImapCommandKind {
         .uidSearch(query.serialize())
     }
+
 }

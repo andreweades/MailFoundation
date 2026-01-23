@@ -16,6 +16,15 @@ public struct ImapMailboxListResponse: Sendable, Equatable {
     public let attributes: [String]
     public let delimiter: String?
     public let name: String
+    public let decodedName: String
+
+    public init(kind: ImapMailboxListKind, attributes: [String], delimiter: String?, name: String) {
+        self.kind = kind
+        self.attributes = attributes
+        self.delimiter = delimiter
+        self.name = name
+        self.decodedName = ImapMailboxEncoding.decode(name)
+    }
 
     public static func parse(_ line: String) -> ImapMailboxListResponse? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
