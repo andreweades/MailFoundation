@@ -413,10 +413,6 @@ public actor AsyncImapSession {
         throw SessionError.timeout
     }
 
-    public func state() async -> AsyncImapClient.State {
-        await client.state
-    }
-
     public func capabilities() async -> ImapCapabilities? {
         await client.capabilities
     }
@@ -867,6 +863,39 @@ public actor AsyncImapSession {
                     return response
                 }
             }
+        }
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+extension AsyncImapSession: AsyncMailService {
+    public typealias ConnectResponse = ImapResponse?
+
+    public var state: MailServiceState {
+        get async {
+            let clientState = await client.state
+            switch clientState {
+            case .disconnected:
+                return .disconnected
+            case .connected, .authenticating:
+                return .connected
+            case .authenticated, .selected:
+                return .authenticated
+            }
+        }
+    }
+
+    public var isConnected: Bool {
+        get async {
+            let clientState = await client.state
+            return clientState != .disconnected
+        }
+    }
+
+    public var isAuthenticated: Bool {
+        get async {
+            let clientState = await client.state
+            return clientState == .authenticated || clientState == .selected
         }
     }
 }

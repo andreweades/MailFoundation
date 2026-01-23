@@ -20,6 +20,7 @@ public final class SmtpClient {
     public private(set) var state: State = .disconnected
     public private(set) var capabilities: SmtpCapabilities?
     public private(set) var lastWriteSucceeded: Bool = true
+    public private(set) var isAuthenticated: Bool = false
 
     public var protocolLogger: ProtocolLoggerType {
         didSet {
@@ -38,6 +39,7 @@ public final class SmtpClient {
         protocolLogger.logConnect(uri)
         isConnected = true
         state = .connected
+        isAuthenticated = false
     }
 
     public func connect(transport: Transport) {
@@ -45,17 +47,20 @@ public final class SmtpClient {
         transport.open()
         isConnected = true
         state = .connected
+        isAuthenticated = false
     }
 
     public func disconnect() {
         isConnected = false
         state = .disconnected
+        isAuthenticated = false
     }
 
     public func beginAuthentication() {
         guard isConnected else { return }
         detector.isAuthenticating = true
         state = .authenticating
+        isAuthenticated = false
     }
 
     public func endAuthentication() {
@@ -68,8 +73,10 @@ public final class SmtpClient {
         detector.isAuthenticating = false
         if response.code >= 200 && response.code < 300 {
             state = .connected
+            isAuthenticated = true
         } else if response.code >= 400 {
             state = .connected
+            isAuthenticated = false
         }
     }
 

@@ -276,3 +276,22 @@ public final class Pop3Session {
         }
     }
 }
+
+extension Pop3Session: MailService {
+    public typealias ConnectResponse = Pop3Response
+
+    public var state: MailServiceState {
+        switch client.state {
+        case .disconnected:
+            return .disconnected
+        case .connected, .authenticating:
+            return .connected
+        case .authenticated:
+            return .authenticated
+        }
+    }
+
+    public var isConnected: Bool { client.isConnected }
+
+    public var isAuthenticated: Bool { client.state == .authenticated }
+}

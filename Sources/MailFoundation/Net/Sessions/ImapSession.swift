@@ -787,3 +787,24 @@ public final class ImapSession {
         return nil
     }
 }
+
+extension ImapSession: MailService {
+    public typealias ConnectResponse = ImapResponse
+
+    public var state: MailServiceState {
+        switch client.state {
+        case .disconnected:
+            return .disconnected
+        case .connected, .authenticating:
+            return .connected
+        case .authenticated, .selected:
+            return .authenticated
+        }
+    }
+
+    public var isConnected: Bool { client.isConnected }
+
+    public var isAuthenticated: Bool {
+        client.state == .authenticated || client.state == .selected
+    }
+}

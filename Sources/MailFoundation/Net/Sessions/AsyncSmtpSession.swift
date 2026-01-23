@@ -130,12 +130,38 @@ public actor AsyncSmtpSession {
         return response
     }
 
-    public func state() async -> AsyncSmtpClient.State {
-        await client.state
-    }
-
     public func capabilities() async -> SmtpCapabilities? {
         await client.capabilities
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+extension AsyncSmtpSession: AsyncMailService {
+    public typealias ConnectResponse = SmtpResponse?
+
+    public var state: MailServiceState {
+        get async {
+            let clientState = await client.state
+            switch clientState {
+            case .disconnected:
+                return .disconnected
+            case .connected:
+                return (await client.isAuthenticated) ? .authenticated : .connected
+            case .authenticating:
+                return .connected
+            }
+        }
+    }
+
+    public var isConnected: Bool {
+        get async {
+            let clientState = await client.state
+            return clientState != .disconnected
+        }
+    }
+
+    public var isAuthenticated: Bool {
+        get async { await client.isAuthenticated }
     }
 }
 

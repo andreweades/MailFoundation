@@ -214,6 +214,25 @@ public final class SmtpSession {
     }
 }
 
+extension SmtpSession: MailService {
+    public typealias ConnectResponse = SmtpResponse
+
+    public var state: MailServiceState {
+        switch client.state {
+        case .disconnected:
+            return .disconnected
+        case .connected:
+            return client.isAuthenticated ? .authenticated : .connected
+        case .authenticating:
+            return .connected
+        }
+    }
+
+    public var isConnected: Bool { client.isConnected }
+
+    public var isAuthenticated: Bool { client.isAuthenticated }
+}
+
 extension SmtpSession: MessageTransport {
     public func sendMessage(from: String, to recipients: [String], data: [UInt8]) throws {
         _ = try sendMail(from: from, to: recipients, data: data)

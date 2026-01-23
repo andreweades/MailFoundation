@@ -11,21 +11,27 @@ public enum MailServiceState: Sendable, Equatable {
 }
 
 public protocol MailService: AnyObject {
+    associatedtype ConnectResponse
+
     var state: MailServiceState { get }
     var isConnected: Bool { get }
     var isAuthenticated: Bool { get }
 
-    func connect() throws
+    @discardableResult
+    func connect() throws -> ConnectResponse
     func disconnect()
 }
 
 @available(macOS 10.15, iOS 13.0, *)
 public protocol AsyncMailService: AnyObject {
-    var state: MailServiceState { get }
-    var isConnected: Bool { get }
-    var isAuthenticated: Bool { get }
+    associatedtype ConnectResponse
 
-    func connect() async throws
+    var state: MailServiceState { get async }
+    var isConnected: Bool { get async }
+    var isAuthenticated: Bool { get async }
+
+    @discardableResult
+    func connect() async throws -> ConnectResponse
     func disconnect() async
 }
 

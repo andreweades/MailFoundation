@@ -175,10 +175,6 @@ public actor AsyncPop3Session {
         return response
     }
 
-    public func state() async -> AsyncPop3Client.State {
-        await client.state
-    }
-
     public func capabilities() async -> Pop3Capabilities? {
         await client.capabilities
     }
@@ -193,5 +189,35 @@ public actor AsyncPop3Session {
             emptyReads += 1
         }
         throw SessionError.timeout
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+extension AsyncPop3Session: AsyncMailService {
+    public typealias ConnectResponse = Pop3Response?
+
+    public var state: MailServiceState {
+        get async {
+            let clientState = await client.state
+            switch clientState {
+            case .disconnected:
+                return .disconnected
+            case .connected, .authenticating:
+                return .connected
+            case .authenticated:
+                return .authenticated
+            }
+        }
+    }
+
+    public var isConnected: Bool {
+        get async {
+            let clientState = await client.state
+            return clientState != .disconnected
+        }
+    }
+
+    public var isAuthenticated: Bool {
+        get async { await client.state == .authenticated }
     }
 }

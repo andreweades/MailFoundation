@@ -19,6 +19,7 @@ public actor AsyncSmtpClient {
 
     public private(set) var state: State = .disconnected
     public private(set) var capabilities: SmtpCapabilities?
+    public private(set) var isAuthenticated: Bool = false
     public var protocolLogger: ProtocolLoggerType
 
     public init(transport: AsyncTransport, protocolLogger: ProtocolLoggerType = NullProtocolLogger()) {
@@ -29,6 +30,7 @@ public actor AsyncSmtpClient {
     public func start() async throws {
         try await transport.start()
         state = .connected
+        isAuthenticated = false
         readerTask = Task {
             for await chunk in transport.incoming {
                 await queue.enqueue(chunk)
@@ -43,11 +45,13 @@ public actor AsyncSmtpClient {
         await transport.stop()
         await queue.finish()
         state = .disconnected
+        isAuthenticated = false
     }
 
     public func beginAuthentication() {
         guard state == .connected else { return }
         state = .authenticating
+        isAuthenticated = false
     }
 
     public func endAuthentication() {
@@ -60,8 +64,10 @@ public actor AsyncSmtpClient {
         guard state == .authenticating else { return }
         if response.code >= 200 && response.code < 300 {
             state = .connected
+            isAuthenticated = true
         } else if response.code >= 400 {
             state = .connected
+            isAuthenticated = false
         }
     }
 
