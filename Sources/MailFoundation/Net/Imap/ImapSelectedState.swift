@@ -191,3 +191,13 @@ public extension ImapSelectedState {
             lhs.uidSet.description == rhs.uidSet.description
     }
 }
+
+public extension ImapSelectedState {
+    func uidSetSnapshot(sortOrder: SortOrder = .ascending) -> UniqueIdSet {
+        var snapshot = UniqueIdSet(validity: uidValidity ?? uidSet.validity, sortOrder: sortOrder)
+        for uid in uidSet {
+            snapshot.add(uid)
+        }
+        return snapshot
+    }
+}

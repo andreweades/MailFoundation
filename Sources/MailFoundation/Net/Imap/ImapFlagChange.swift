@@ -34,9 +34,3 @@ public struct ImapFlagChange: Sendable, Equatable {
         return parse(fetch)
     }
 }
-
-public extension ImapFetchResult {
-    func flagChanges() -> [ImapFlagChange] {
-        responses.compactMap(ImapFlagChange.parse)
-    }
-}

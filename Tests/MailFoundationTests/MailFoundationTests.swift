@@ -528,7 +528,7 @@ func imapFlagChangeParsing() {
 
     let responses = [line1, line2].compactMap(ImapFetchResponse.parse)
     let result = ImapFetchResult(responses: responses, qresyncEvents: [])
-    #expect(result.flagChanges().count == 2)
+    #expect(result.flagChanges.count == 2)
 }
 
 @Test("IMAP mailbox UTF-7 decoding")
@@ -1628,6 +1628,39 @@ func asyncImapSessionUidFetchMapping() async throws {
 }
 
 @available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP QRESYNC store with EXISTS/EXPUNGE and flags")
+func asyncImapSessionQresyncStoreMixedEvents() async throws {
+    let transport = AsyncStreamTransport()
+    let session = AsyncImapSession(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let selectTask = Task { try await session.select(mailbox: "INBOX") }
+    await transport.yieldIncoming(Array("* OK [UIDVALIDITY 7] Ready\r\n".utf8))
+    await transport.yieldIncoming(Array("A0001 OK SELECT\r\n".utf8))
+    _ = try await selectTask.value
+
+    let uidSet = UniqueIdSet([UniqueId(validity: 7, id: 100), UniqueId(validity: 7, id: 200)])
+    let storeTask = Task { try await session.uidStoreWithQresync(uidSet, data: "+FLAGS (\\Seen)") }
+    await transport.yieldIncoming(Array("* 2 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("* 1 FETCH (UID 100 MODSEQ (56) FLAGS (\\Seen))\r\n".utf8))
+    await transport.yieldIncoming(Array("* 2 FETCH (UID 200 MODSEQ (57) FLAGS (\\Seen))\r\n".utf8))
+    await transport.yieldIncoming(Array("* 2 EXPUNGE\r\n".utf8))
+    await transport.yieldIncoming(Array("* VANISHED 300\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK UID STORE\r\n".utf8))
+    let result = try await storeTask.value
+    #expect(result.flagChanges.count == 2)
+    #expect(result.qresyncEvents.count == 3)
+
+    let state = await session.selectedState
+    #expect(state.messageCount == 1)
+    #expect(state.lastExpungeSequence == 2)
+    #expect(state.uidSet.count == 1)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
 @Test("Async transport factory async-stream backend")
 func asyncTransportFactoryAsyncStream() throws {
     let transport = try AsyncTransportFactory.make(host: "localhost", port: 1, backend: .asyncStream)
@@ -1822,6 +1855,32 @@ func syncImapSessionUidFetchStoreMapping() throws {
     #expect(session.selectedState.uidBySequence[1]?.id == 200)
     let uid200 = UniqueId(validity: 7, id: 200)
     #expect(session.selectedState.sequenceByUid[uid200] == 1)
+    #expect(session.selectedState.uidSet.count == 1)
+}
+
+@Test("Sync IMAP QRESYNC store with EXISTS/EXPUNGE and flags")
+func syncImapSessionQresyncStoreMixedEvents() throws {
+    let transport = TestTransport(incoming: [
+        Array("* OK Ready\r\n".utf8),
+        Array("* OK [UIDVALIDITY 7] Ready\r\n".utf8),
+        Array("A0001 OK SELECT\r\n".utf8),
+        Array("* 2 EXISTS\r\n".utf8),
+        Array("* 1 FETCH (UID 100 MODSEQ (56) FLAGS (\\Seen))\r\n".utf8),
+        Array("* 2 FETCH (UID 200 MODSEQ (57) FLAGS (\\Seen))\r\n".utf8),
+        Array("* 2 EXPUNGE\r\n".utf8),
+        Array("* VANISHED 300\r\n".utf8),
+        Array("A0002 OK UID STORE\r\n".utf8)
+    ])
+    let session = ImapSession(transport: transport, maxReads: 10)
+    _ = try session.connect()
+    _ = try session.select(mailbox: "INBOX")
+
+    let uidSet = UniqueIdSet([UniqueId(validity: 7, id: 100), UniqueId(validity: 7, id: 200)])
+    let result = try session.uidStoreWithQresync(uidSet, data: "+FLAGS (\\Seen)")
+    #expect(result.flagChanges.count == 2)
+    #expect(result.qresyncEvents.count == 3)
+    #expect(session.selectedState.messageCount == 1)
+    #expect(session.selectedState.lastExpungeSequence == 2)
     #expect(session.selectedState.uidSet.count == 1)
 }
 

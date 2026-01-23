@@ -12,4 +12,8 @@ public struct ImapFetchResult: Sendable, Equatable {
         self.responses = responses
         self.qresyncEvents = qresyncEvents
     }
+
+    public var flagChanges: [ImapFlagChange] {
+        responses.compactMap(ImapFlagChange.parse)
+    }
 }
