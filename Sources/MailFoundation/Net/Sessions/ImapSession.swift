@@ -429,6 +429,10 @@ public final class ImapSession {
         return result.responses
     }
 
+    public func fetch(_ set: String, request: FetchRequest) throws -> [ImapFetchResponse] {
+        try fetch(set, items: request.imapItemList)
+    }
+
     public func fetchWithQresync(_ set: String, items: String) throws -> ImapFetchResult {
         let command = client.send(.fetch(set, items))
         try ensureWrite()
@@ -506,6 +510,10 @@ public final class ImapSession {
     public func uidFetch(_ set: UniqueIdSet, items: String) throws -> [ImapFetchResponse] {
         let result = try uidFetchWithQresync(set, items: items)
         return result.responses
+    }
+
+    public func uidFetch(_ set: UniqueIdSet, request: FetchRequest) throws -> [ImapFetchResponse] {
+        try uidFetch(set, items: request.imapItemList)
     }
 
     public func uidFetchWithQresync(_ set: UniqueIdSet, items: String) throws -> ImapFetchResult {
@@ -587,6 +595,10 @@ public final class ImapSession {
     public func fetchAttributes(_ set: String, items: String) throws -> [ImapFetchAttributes] {
         let responses = try fetch(set, items: items)
         return responses.compactMap(ImapFetchAttributes.parse)
+    }
+
+    public func fetchAttributes(_ set: String, request: FetchRequest) throws -> [ImapFetchAttributes] {
+        try fetchAttributes(set, items: request.imapItemList)
     }
 
     public func status(mailbox: String, items: [String]) throws -> ImapStatusResponse {

@@ -82,6 +82,32 @@ public actor AsyncSmtpSession {
         try await client.authenticate(mechanism: mechanism, initialResponse: initialResponse)
     }
 
+    public func authenticate(
+        mechanism: String,
+        initialResponse: String? = nil,
+        responder: @Sendable (String) async throws -> String
+    ) async throws -> SmtpResponse {
+        _ = try await client.send(.auth(mechanism, initialResponse: initialResponse))
+        guard var response = await client.waitForResponse() else {
+            throw SessionError.timeout
+        }
+
+        while response.code == 334 {
+            let challenge = response.lines.first ?? ""
+            let reply = try await responder(challenge)
+            _ = try await client.sendLine(reply)
+            guard let next = await client.waitForResponse() else {
+                throw SessionError.timeout
+            }
+            response = next
+        }
+
+        if response.isSuccess {
+            return response
+        }
+        throw SessionError.smtpError(code: response.code, message: response.lines.joined(separator: " "))
+    }
+
     public func sendData(_ message: [UInt8]) async throws -> SmtpResponse? {
         try await client.sendData(message)
     }

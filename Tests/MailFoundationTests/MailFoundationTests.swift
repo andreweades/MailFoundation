@@ -727,6 +727,7 @@ func mailTransportEnvelopeResolution() throws {
     let message = MimeMessage()
     message.headers[.from] = "Alice <alice@example.com>"
     message.headers[.to] = "Bob <bob@example.com>"
+    message.headers[.bcc] = "Dan <dan@example.com>"
     message.headers[.cc] = "Carol <carol@example.com>"
     message.headers[.bcc] = "Dan <dan@example.com>"
 
@@ -893,6 +894,17 @@ func pop3ResponseParser() {
     let err = Pop3Response.parse("-ERR auth failed")
     #expect(err?.status == .err)
     #expect(err?.message == "auth failed")
+    let cont = Pop3Response.parse("+ VXNlcm5hbWU6")
+    #expect(cont?.status == .continuation)
+    #expect(cont?.message == "VXNlcm5hbWU6")
+}
+
+@Test("POP3 APOP challenge parsing")
+func pop3ApopChallengeParsing() {
+    let response = Pop3Response.parse("+OK POP3 server ready <1896.697170952@dbc.mtview.ca.us>")
+    #expect(response?.apopChallenge == "<1896.697170952@dbc.mtview.ca.us>")
+    let missing = Pop3Response.parse("+OK ready")
+    #expect(missing?.apopChallenge == nil)
 }
 
 @Test("POP3 command serialization extras")
@@ -992,6 +1004,40 @@ func imapResponseParsers() {
     #expect(full?.envelopeRaw?.hasPrefix("(") == true)
     #expect(full?.parsedEnvelope() != nil)
     #expect(full?.bodyStructure?.contains("TEXT") == true)
+}
+
+@Test("Message flags parsing")
+func messageFlagsParsing() {
+    let parsed = MessageFlags.parse(["\\Seen", "\\Answered", "Custom", "$Label"])
+    #expect(parsed.flags.contains(.seen))
+    #expect(parsed.flags.contains(.answered))
+    #expect(parsed.flags.contains(.userDefined))
+    #expect(parsed.keywords == ["Custom", "$Label"])
+}
+
+@Test("Message summary from fetch response")
+func messageSummaryFromFetch() {
+    let line = "* 2 FETCH (FLAGS (\\Seen) UID 100 RFC822.SIZE 120 INTERNALDATE \"01-Jan-2020 00:00:00 +0000\" ENVELOPE (NIL NIL NIL NIL NIL NIL NIL NIL NIL NIL) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" NIL NIL NIL \"7BIT\" 1 1))"
+    let fetch = ImapFetchResponse.parse(line)
+    let summary = fetch.flatMap(MessageSummary.init(fetch:))
+    #expect(summary?.sequence == 2)
+    #expect(summary?.index == 1)
+    #expect(summary?.uniqueId?.id == 100)
+    #expect(summary?.flags.contains(.seen) == true)
+    #expect(summary?.size == 120)
+    #expect(summary?.envelope != nil)
+    #expect(summary?.bodyStructure != nil)
+    #expect(summary?.items.contains(.envelope) == true)
+    #expect(summary?.items.contains(.bodyStructure) == true)
+}
+
+@Test("Fetch request serialization")
+func fetchRequestSerialization() {
+    let request = FetchRequest(items: [.flags, .internalDate, .size, .uniqueId])
+    #expect(request.imapItemList == "(FLAGS INTERNALDATE RFC822.SIZE UID)")
+
+    let headerRequest = FetchRequest(items: [.headers, .references], headers: ["Subject"])
+    #expect(headerRequest.imapItemList == "BODY.PEEK[HEADER.FIELDS (Subject REFERENCES)]")
 }
 
 @Test("LineBuffer incremental")
@@ -1374,6 +1420,67 @@ func asyncSmtpSessionSendMail() async throws {
     await transport.yieldIncoming(Array("250 OK\r\n".utf8))
     let response = try await sendTask.value
     #expect(response.code == 250)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async SMTP transport send message")
+func asyncSmtpTransportSendMessage() async throws {
+    let transport = AsyncStreamTransport()
+    let smtp = AsyncSmtpTransport(transport: transport)
+
+    let connectTask = Task { try await smtp.connect() }
+    await transport.yieldIncoming(Array("220 Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let ehloTask = Task { try await smtp.ehlo(domain: "localhost") }
+    await transport.yieldIncoming(Array("250-smtp.example.com\r\n250 SIZE 12\r\n".utf8))
+    _ = try await ehloTask.value
+
+    let message = MimeMessage()
+    message.headers[.from] = "Alice <alice@example.com>"
+    message.headers[.to] = "Bob <bob@example.com>"
+    message.headers[.bcc] = "Dan <dan@example.com>"
+
+    let sendTask = Task { try await smtp.send(message) }
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    await transport.yieldIncoming(Array("354 End data\r\n".utf8))
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    let response = try await sendTask.value
+    #expect(response.isSuccess)
+
+    let sent = await transport.sentSnapshot()
+    let combined = sent.map { String(decoding: $0, as: UTF8.self) }.joined()
+    #expect(combined.contains("MAIL FROM:<alice@example.com>\r\n"))
+    #expect(combined.contains("RCPT TO:<bob@example.com>\r\n"))
+    #expect(!combined.contains("Bcc:"))
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async SMTP auth challenge flow")
+func asyncSmtpAuthChallengeFlow() async throws {
+    let transport = AsyncStreamTransport()
+    let session = AsyncSmtpSession(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("220 Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task {
+        try await session.authenticate(mechanism: "PLAIN") { challenge in
+            #expect(challenge == "VXNlcm5hbWU6")
+            return "dGVzdA=="
+        }
+    }
+    await transport.yieldIncoming(Array("334 VXNlcm5hbWU6\r\n".utf8))
+    await transport.yieldIncoming(Array("235 Authenticated\r\n".utf8))
+    let response = try await authTask.value
+    #expect(response.code == 235)
+
+    let sent = await transport.sentSnapshot()
+    let combined = sent.map { String(decoding: $0, as: UTF8.self) }.joined()
+    #expect(combined.contains("AUTH PLAIN\r\n"))
+    #expect(combined.contains("dGVzdA==\r\n"))
 }
 
 @available(macOS 10.15, iOS 13.0, *)
@@ -1954,6 +2061,52 @@ func syncSmtpSessionFlow() throws {
     let sent = transport.written.map { String(decoding: $0, as: UTF8.self) }
     #expect(sent.contains("EHLO localhost\r\n"))
     #expect(sent.contains("MAIL FROM:<alice@example.com>\r\n"))
+}
+
+@Test("Sync SMTP auth challenge flow")
+func syncSmtpAuthChallengeFlow() throws {
+    let transport = TestTransport(incoming: [
+        Array("220 Ready\r\n".utf8),
+        Array("334 VXNlcm5hbWU6\r\n".utf8),
+        Array("235 Authenticated\r\n".utf8)
+    ])
+    let session = SmtpSession(transport: transport, maxReads: 2)
+    _ = try session.connect()
+    let response = try session.authenticate(mechanism: "PLAIN") { challenge in
+        #expect(challenge == "VXNlcm5hbWU6")
+        return "dGVzdA=="
+    }
+    #expect(response.code == 235)
+    let sent = transport.written.map { String(decoding: $0, as: UTF8.self) }
+    #expect(sent.contains("AUTH PLAIN\r\n"))
+    #expect(sent.contains("dGVzdA==\r\n"))
+}
+
+@Test("SMTP transport send message")
+func smtpTransportSendMessage() throws {
+    let transport = TestTransport(incoming: [
+        Array("220 Ready\r\n".utf8),
+        Array("250-smtp.example.com\r\n250 SIZE 12\r\n".utf8),
+        Array("250 OK\r\n".utf8),
+        Array("250 OK\r\n".utf8),
+        Array("354 End data\r\n".utf8),
+        Array("250 OK\r\n".utf8)
+    ])
+    let smtp = SmtpTransport(transport: transport, maxReads: 3)
+    _ = try smtp.connect()
+    _ = try smtp.ehlo(domain: "localhost")
+
+    let message = MimeMessage()
+    message.headers[.from] = "Alice <alice@example.com>"
+    message.headers[.to] = "Bob <bob@example.com>"
+
+    let response = try smtp.send(message)
+    #expect(response.isSuccess)
+
+    let sent = transport.written.map { String(decoding: $0, as: UTF8.self) }
+    #expect(sent.contains("MAIL FROM:<alice@example.com>\r\n"))
+    #expect(sent.contains("RCPT TO:<bob@example.com>\r\n"))
+    #expect(!sent.joined().contains("Bcc:"))
 }
 
 @Test("Sync SMTP session extra commands")

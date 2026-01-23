@@ -9,6 +9,7 @@ import Foundation
 public enum Pop3ResponseStatus: Sendable {
     case ok
     case err
+    case continuation
 }
 
 public struct Pop3Response: Sendable, Equatable {
@@ -19,6 +20,20 @@ public struct Pop3Response: Sendable, Equatable {
         status == .ok
     }
 
+    public var isContinuation: Bool {
+        status == .continuation
+    }
+
+    public var apopChallenge: String? {
+        guard status == .ok else { return nil }
+        guard let start = message.firstIndex(of: "<"),
+              let end = message[start...].firstIndex(of: ">"),
+              start < end else {
+            return nil
+        }
+        return String(message[start...end])
+    }
+
     public static func parse(_ line: String) -> Pop3Response? {
         if line.hasPrefix("+OK") {
             let message = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
@@ -27,6 +42,10 @@ public struct Pop3Response: Sendable, Equatable {
         if line.hasPrefix("-ERR") {
             let message = line.dropFirst(4).trimmingCharacters(in: .whitespaces)
             return Pop3Response(status: .err, message: String(message))
+        }
+        if line.hasPrefix("+") {
+            let message = line.dropFirst(1).trimmingCharacters(in: .whitespaces)
+            return Pop3Response(status: .continuation, message: String(message))
         }
         return nil
     }

@@ -92,6 +92,20 @@ public actor AsyncSmtpClient {
         return bytes
     }
 
+    @discardableResult
+    public func sendLine(_ line: String) async throws -> [UInt8] {
+        let serialized: String
+        if line.hasSuffix("\r\n") {
+            serialized = line
+        } else {
+            serialized = "\(line)\r\n"
+        }
+        let bytes = Array(serialized.utf8)
+        protocolLogger.logClient(bytes, offset: 0, count: bytes.count)
+        try await transport.send(bytes)
+        return bytes
+    }
+
     public func nextResponses() async -> [SmtpResponse] {
         guard let chunk = await queue.dequeue() else {
             return []

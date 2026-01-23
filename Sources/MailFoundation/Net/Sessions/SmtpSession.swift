@@ -8,6 +8,11 @@ public final class SmtpSession {
     private let client: SmtpClient
     private let transport: Transport
     private let maxReads: Int
+    
+    public var protocolLogger: ProtocolLoggerType {
+        get { client.protocolLogger }
+        set { client.protocolLogger = newValue }
+    }
 
     public init(transport: Transport, protocolLogger: ProtocolLoggerType = NullProtocolLogger(), maxReads: Int = 10) {
         self.transport = transport
@@ -154,6 +159,34 @@ public final class SmtpSession {
         guard let response = client.waitForResponse(maxReads: maxReads) else {
             throw SessionError.timeout
         }
+        if response.isSuccess {
+            return response
+        }
+        throw SessionError.smtpError(code: response.code, message: response.lines.joined(separator: " "))
+    }
+
+    public func authenticate(
+        mechanism: String,
+        initialResponse: String? = nil,
+        responder: (String) throws -> String
+    ) throws -> SmtpResponse {
+        _ = client.send(.auth(mechanism, initialResponse: initialResponse))
+        try ensureWrite()
+        guard var response = client.waitForResponse(maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+
+        while response.code == 334 {
+            let challenge = response.lines.first ?? ""
+            let reply = try responder(challenge)
+            _ = client.sendLine(reply)
+            try ensureWrite()
+            guard let next = client.waitForResponse(maxReads: maxReads) else {
+                throw SessionError.timeout
+            }
+            response = next
+        }
+
         if response.isSuccess {
             return response
         }

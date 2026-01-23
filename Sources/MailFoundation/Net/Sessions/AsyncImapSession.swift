@@ -518,6 +518,10 @@ public actor AsyncImapSession {
         return result.responses
     }
 
+    public func fetch(_ set: String, request: FetchRequest, maxEmptyReads: Int = 10) async throws -> [ImapFetchResponse] {
+        try await fetch(set, items: request.imapItemList, maxEmptyReads: maxEmptyReads)
+    }
+
     public func fetchWithQresync(
         _ set: String,
         items: String,
@@ -598,6 +602,10 @@ public actor AsyncImapSession {
     public func uidFetch(_ set: UniqueIdSet, items: String, maxEmptyReads: Int = 10) async throws -> [ImapFetchResponse] {
         let result = try await uidFetchWithQresync(set, items: items, maxEmptyReads: maxEmptyReads)
         return result.responses
+    }
+
+    public func uidFetch(_ set: UniqueIdSet, request: FetchRequest, maxEmptyReads: Int = 10) async throws -> [ImapFetchResponse] {
+        try await uidFetch(set, items: request.imapItemList, maxEmptyReads: maxEmptyReads)
     }
 
     public func uidFetchWithQresync(
@@ -689,6 +697,10 @@ public actor AsyncImapSession {
     public func fetchAttributes(_ set: String, items: String, maxEmptyReads: Int = 10) async throws -> [ImapFetchAttributes] {
         let responses = try await fetch(set, items: items, maxEmptyReads: maxEmptyReads)
         return responses.compactMap(ImapFetchAttributes.parse)
+    }
+
+    public func fetchAttributes(_ set: String, request: FetchRequest, maxEmptyReads: Int = 10) async throws -> [ImapFetchAttributes] {
+        try await fetchAttributes(set, items: request.imapItemList, maxEmptyReads: maxEmptyReads)
     }
 
     public func startTls(validateCertificate: Bool = true, maxEmptyReads: Int = 10) async throws -> ImapResponse {

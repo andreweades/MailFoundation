@@ -84,11 +84,11 @@ open class MailServiceBase<Response>: MailService {
     public typealias ConnectResponse = Response
 
     public let syncRoot = NSObject()
-    public var protocolLogger: ProtocolLoggerType
-    public var tlsConfiguration: TlsConfiguration
-    public var serverCertificateValidation: CertificateValidationHandler?
-    public var localEndpoint: SocketEndpoint?
-    public weak var proxyClient: (any ProxyClient)?
+    open var protocolLogger: ProtocolLoggerType
+    open var tlsConfiguration: TlsConfiguration
+    open var serverCertificateValidation: CertificateValidationHandler?
+    open var localEndpoint: SocketEndpoint?
+    open weak var proxyClient: (any ProxyClient)?
 
     public private(set) var authenticationMechanisms: Set<String> = []
     public private(set) var state: MailServiceState = .disconnected

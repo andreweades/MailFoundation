@@ -89,7 +89,8 @@ public enum MailTransportEnvelopeBuilder {
     ) throws -> [UInt8] {
         let stream = MemoryStream()
         try message.writeTo(options, stream)
-        let data = stream.toByteArray()
+        var data = stream.toByteArray()
+        data = stripHiddenHeaders(from: data, lineEnding: options.newLine)
         if let progress {
             let size = Int64(data.count)
             progress.report(bytesTransferred: size, totalSize: size)
@@ -184,4 +185,69 @@ private func addUnique(_ recipients: inout [MailboxAddress], unique: inout Set<S
             recipients.append(mailbox)
         }
     }
+}
+
+private func stripHiddenHeaders(from data: [UInt8], lineEnding: String) -> [UInt8] {
+    guard let separator = findHeaderBodySeparator(data) else {
+        return data
+    }
+
+    let headerBytes = Array(data[..<separator.headerEnd])
+    let bodyBytes = Array(data[separator.bodyStart...])
+    let headerText = String(decoding: headerBytes, as: UTF8.self)
+    let lines = headerText.components(separatedBy: lineEnding)
+
+    let hiddenNames: Set<String> = ["bcc", "resent-bcc", "content-length"]
+    var filtered: [String] = []
+    var removing = false
+
+    for line in lines {
+        if line.isEmpty {
+            continue
+        }
+        if line.first == " " || line.first == "\t" {
+            if !removing {
+                filtered.append(line)
+            }
+            continue
+        }
+
+        removing = false
+        if let colonIndex = line.firstIndex(of: ":") {
+            let name = line[..<colonIndex].trimmingCharacters(in: .whitespaces).lowercased()
+            if hiddenNames.contains(name) {
+                removing = true
+                continue
+            }
+        }
+        filtered.append(line)
+    }
+
+    var result: [UInt8] = Array(filtered.joined(separator: lineEnding).utf8)
+    let newlineBytes = Array(lineEnding.utf8)
+    result.append(contentsOf: newlineBytes)
+    result.append(contentsOf: newlineBytes)
+    result.append(contentsOf: bodyBytes)
+    return result
+}
+
+private func findHeaderBodySeparator(_ bytes: [UInt8]) -> (headerEnd: Int, bodyStart: Int)? {
+    if bytes.count < 2 {
+        return nil
+    }
+    var index = 0
+    while index + 1 < bytes.count {
+        if bytes[index] == 0x0D, bytes[index + 1] == 0x0A {
+            if index + 3 < bytes.count,
+               bytes[index + 2] == 0x0D,
+               bytes[index + 3] == 0x0A {
+                return (index, index + 4)
+            }
+        }
+        if bytes[index] == 0x0A, bytes[index + 1] == 0x0A {
+            return (index, index + 2)
+        }
+        index += 1
+    }
+    return nil
 }
