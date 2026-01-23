@@ -26,6 +26,29 @@ public struct ImapFetchBodyResult: Sendable, Equatable {
     public let bodies: [ImapFetchBodySectionPayload]
 }
 
+public struct ImapFetchBodyKey: Sendable, Hashable {
+    public let section: String
+    public let peek: Bool
+    public let partial: ImapFetchPartial?
+
+    public init(section: String, peek: Bool, partial: ImapFetchPartial?) {
+        self.section = section
+        self.peek = peek
+        self.partial = partial
+    }
+}
+
+public struct ImapFetchBodyMap: Sendable, Equatable {
+    public let sequence: Int
+    public let payloads: [ImapFetchBodySectionPayload]
+    public let bodies: [ImapFetchBodyKey: [UInt8]]
+
+    public func body(section: ImapFetchBodySection? = nil) -> [UInt8]? {
+        let key = section?.serialize() ?? ""
+        return bodies.first { $0.key.section == key }?.value
+    }
+}
+
 public enum ImapFetchBodyParser {
     public static func parse(_ messages: [ImapLiteralMessage]) -> [ImapFetchBodyResult] {
         var grouped: [Int: [ImapFetchBodySectionPayload]] = [:]
@@ -41,6 +64,22 @@ public enum ImapFetchBodyParser {
         }
         return grouped.map { ImapFetchBodyResult(sequence: $0.key, bodies: $0.value) }
             .sorted { $0.sequence < $1.sequence }
+    }
+
+    public static func parseMaps(_ messages: [ImapLiteralMessage]) -> [ImapFetchBodyMap] {
+        let results = parse(messages)
+        return results.map { result in
+            var map: [ImapFetchBodyKey: [UInt8]] = [:]
+            for payload in result.bodies {
+                let key = ImapFetchBodyKey(
+                    section: payload.section?.serialize() ?? "",
+                    peek: payload.peek,
+                    partial: payload.partial
+                )
+                map[key] = payload.data
+            }
+            return ImapFetchBodyMap(sequence: result.sequence, payloads: result.bodies, bodies: map)
+        }
     }
 }
 

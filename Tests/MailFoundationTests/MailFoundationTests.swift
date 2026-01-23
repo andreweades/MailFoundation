@@ -447,6 +447,19 @@ func imapFetchBodyParser() {
     #expect(results.first?.sequence == 2)
 }
 
+@Test("IMAP fetch body map")
+func imapFetchBodyMap() {
+    let line1 = "* 2 FETCH (BODY[] {5}"
+    let msg1 = ImapLiteralMessage(line: line1, response: ImapResponse.parse(line1), literal: Array("Hello".utf8))
+    let line2 = "* 2 FETCH (BODY[TEXT] {3}"
+    let msg2 = ImapLiteralMessage(line: line2, response: ImapResponse.parse(line2), literal: Array("abc".utf8))
+    let maps = ImapFetchBodyParser.parseMaps([msg1, msg2])
+    #expect(maps.count == 1)
+    #expect(maps.first?.body() == Array("Hello".utf8))
+    let text = ImapFetchBodySection(subsection: .text)
+    #expect(maps.first?.body(section: text) == Array("abc".utf8))
+}
+
 @Test("IMAP mailbox UTF-7 decoding")
 func imapMailboxUtf7Decoding() {
     let encoded = "Archive &AOQ- Stuff"

@@ -4,7 +4,7 @@
 // Helpers for building BODY[] FETCH items.
 //
 
-public struct ImapFetchPartial: Sendable, Equatable {
+public struct ImapFetchPartial: Sendable, Equatable, Hashable {
     public let start: Int
     public let length: Int
 
