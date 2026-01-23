@@ -144,6 +144,48 @@ func imapCommandHelpers() throws {
     #expect(search.serialized == "A0003 SEARCH FROM \"alice@example.com\" UNSEEN\r\n")
 }
 
+@Test("IMAP mailbox list parsing")
+func imapMailboxListParsing() {
+    let listLine = "* LIST (\\HasNoChildren) \"/\" \"INBOX\""
+    let list = ImapMailboxListResponse.parse(listLine)
+    #expect(list?.kind == .list)
+    #expect(list?.attributes == ["\\HasNoChildren"])
+    #expect(list?.delimiter == "/")
+    #expect(list?.name == "INBOX")
+
+    let lsubLine = "* LSUB () NIL INBOX"
+    let lsub = ImapMailboxListResponse.parse(lsubLine)
+    #expect(lsub?.kind == .lsub)
+    #expect(lsub?.attributes.isEmpty == true)
+    #expect(lsub?.delimiter == nil)
+    #expect(lsub?.name == "INBOX")
+}
+
+@Test("IMAP bodystructure parsing")
+func imapBodyStructureParsing() {
+    let singleRaw = "(\"TEXT\" \"PLAIN\" (\"CHARSET\" \"UTF-8\") NIL NIL \"7BIT\" 12 1)"
+    let single = ImapBodyStructure.parse(singleRaw)
+    if case let .single(part)? = single {
+        #expect(part.type.uppercased() == "TEXT")
+        #expect(part.subtype.uppercased() == "PLAIN")
+        #expect(part.parameters["CHARSET"] == "UTF-8")
+        #expect(part.size == 12)
+        #expect(part.lines == 1)
+    } else {
+        #expect(Bool(false))
+    }
+
+    let multiRaw = "((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"UTF-8\") NIL NIL \"7BIT\" 12 1)(\"TEXT\" \"HTML\" (\"CHARSET\" \"UTF-8\") NIL NIL \"7BIT\" 34 2) \"ALTERNATIVE\" (\"BOUNDARY\" \"abc\"))"
+    let multi = ImapBodyStructure.parse(multiRaw)
+    if case let .multipart(multipart)? = multi {
+        #expect(multipart.parts.count == 2)
+        #expect(multipart.subtype.uppercased() == "ALTERNATIVE")
+        #expect(multipart.parameters["BOUNDARY"] == "abc")
+    } else {
+        #expect(Bool(false))
+    }
+}
+
 @Test("SearchQuery serialization")
 func searchQuerySerialization() {
     let query = SearchQuery.from("alice@example.com")

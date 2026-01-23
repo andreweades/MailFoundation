@@ -77,6 +77,11 @@ public struct ImapFetchAttributes: Sendable, Equatable {
         return Envelope.tryParse(envelopeRaw)
     }
 
+    public func parsedBodyStructure() -> ImapBodyStructure? {
+        guard let bodyStructure else { return nil }
+        return ImapBodyStructure.parse(bodyStructure)
+    }
+
     private static func parseAttributes(_ content: String) -> [String: String] {
         var attributes: [String: String] = [:]
         var index = content.startIndex
