@@ -183,6 +183,39 @@ func imapListStatusParsing() {
     #expect(response?.statusItems["UIDNEXT"] == 5)
 }
 
+@Test("IMAP MODSEQ/VANISHED parsing")
+func imapModSeqVanishedParsing() throws {
+    let modseqLine = "* OK [HIGHESTMODSEQ 42] Ok"
+    let modseq = ImapModSeqResponse.parse(modseqLine)
+    #expect(modseq?.kind == .highest)
+    #expect(modseq?.value == 42)
+
+    let modLine = "* OK [MODSEQ 7] Ok"
+    let mod = ImapModSeqResponse.parse(modLine)
+    #expect(mod?.kind == .modSeq)
+    #expect(mod?.value == 7)
+
+    let vanishedLine = "* VANISHED 1:3"
+    let vanished = ImapVanishedResponse.parse(vanishedLine)
+    #expect(vanished?.earlier == false)
+    #expect(vanished?.uids.description == "1:3")
+
+    let earlierLine = "* VANISHED (EARLIER) 4:5"
+    let earlier = ImapVanishedResponse.parse(earlierLine)
+    #expect(earlier?.earlier == true)
+    #expect(earlier?.uids.description == "4:5")
+}
+
+@Test("IMAP search set helpers")
+func imapSearchSetHelpers() {
+    let response = ImapSearchResponse(ids: [1, 2, 3])
+    let seq = response.sequenceSet()
+    #expect(seq.description == "1:3")
+    let uidSet = response.uniqueIdSet(validity: 7)
+    #expect(uidSet.validity == 7)
+    #expect(uidSet.description == "1:3")
+}
+
 @Test("IMAP bodystructure parsing")
 func imapBodyStructureParsing() {
     let singleRaw = "(\"TEXT\" \"PLAIN\" (\"CHARSET\" \"UTF-8\") NIL NIL \"7BIT\" 12 1)"
@@ -226,6 +259,22 @@ func imapBodyStructureParsing() {
         #expect(part.envelopeRaw?.contains("Hello") == true)
         #expect(part.embedded != nil)
         #expect(part.lines == 10)
+    } else {
+        #expect(Bool(false))
+    }
+
+    if let multipart = ImapBodyStructure.parse(multiRaw) {
+        let parts = multipart.enumerateParts()
+        #expect(parts.map { $0.0 } == ["1", "2"])
+    } else {
+        #expect(Bool(false))
+    }
+
+    if let embedded = message {
+        let parts = embedded.enumerateParts()
+        #expect(parts.first?.0 == "1")
+        #expect(parts.count >= 2)
+        #expect(parts[1].0 == "1.1")
     } else {
         #expect(Bool(false))
     }

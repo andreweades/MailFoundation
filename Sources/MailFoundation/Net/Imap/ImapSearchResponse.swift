@@ -29,3 +29,16 @@ public struct ImapSearchResponse: Sendable, Equatable {
         return ImapSearchResponse(ids: ids)
     }
 }
+
+public extension ImapSearchResponse {
+    func sequenceSet() -> SequenceSet {
+        SequenceSet(ids.map { Int($0) })
+    }
+
+    func uniqueIdSet(validity: UInt32 = 0) -> UniqueIdSet {
+        let uniqueIds = ids.compactMap { UniqueId.tryParse(String($0), validity: validity) }
+        var set = UniqueIdSet(validity: validity)
+        set.add(contentsOf: uniqueIds)
+        return set
+    }
+}

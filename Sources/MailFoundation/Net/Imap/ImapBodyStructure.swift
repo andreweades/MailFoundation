@@ -50,6 +50,29 @@ public indirect enum ImapBodyStructure: Sendable, Equatable {
         }
         return parseNode(node)
     }
+
+    public func enumerateParts() -> [(String, ImapBodyPart)] {
+        var result: [(String, ImapBodyPart)] = []
+        enumerateParts(prefix: "", into: &result)
+        return result
+    }
+
+    private func enumerateParts(prefix: String, into result: inout [(String, ImapBodyPart)]) {
+        switch self {
+        case .single(let part):
+            let id = prefix.isEmpty ? "1" : prefix
+            result.append((id, part))
+            if let embedded = part.embedded {
+                let embeddedPrefix = "\(id).1"
+                embedded.enumerateParts(prefix: embeddedPrefix, into: &result)
+            }
+        case .multipart(let multipart):
+            for (index, child) in multipart.parts.enumerated() {
+                let childId = prefix.isEmpty ? String(index + 1) : "\(prefix).\(index + 1)"
+                child.enumerateParts(prefix: childId, into: &result)
+            }
+        }
+    }
 }
 
 private enum ImapBodyNode: Equatable {
