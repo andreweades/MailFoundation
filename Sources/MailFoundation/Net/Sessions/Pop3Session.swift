@@ -72,6 +72,130 @@ public final class Pop3Session {
         throw SessionError.timeout
     }
 
+    public func apop(user: String, digest: String) throws -> Pop3Response {
+        _ = client.send(.apop(user, digest))
+        try ensureWrite()
+        guard let response = client.waitForResponse(maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        return response
+    }
+
+    public func auth(mechanism: String, initialResponse: String? = nil) throws -> Pop3Response {
+        _ = client.send(.auth(mechanism, initialResponse: initialResponse))
+        try ensureWrite()
+        guard let response = client.waitForResponse(maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        return response
+    }
+
+    public func noop() throws -> Pop3Response {
+        _ = client.send(.noop)
+        try ensureWrite()
+        guard let response = client.waitForResponse(maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        return response
+    }
+
+    public func rset() throws -> Pop3Response {
+        _ = client.send(.rset)
+        try ensureWrite()
+        guard let response = client.waitForResponse(maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        return response
+    }
+
+    public func dele(_ index: Int) throws -> Pop3Response {
+        _ = client.send(.dele(index))
+        try ensureWrite()
+        guard let response = client.waitForResponse(maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        return response
+    }
+
+    public func list(_ index: Int) throws -> Pop3ListItem {
+        _ = client.send(.list(index))
+        try ensureWrite()
+        guard let response = client.waitForResponse(maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        if let item = Pop3ListItem.parseLine(response.message) {
+            return item
+        }
+        throw SessionError.pop3Error(message: response.message)
+    }
+
+    public func uidl(_ index: Int) throws -> Pop3UidlItem {
+        _ = client.send(.uidl(index))
+        try ensureWrite()
+        guard let response = client.waitForResponse(maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        if let item = Pop3UidlItem.parseLine(response.message) {
+            return item
+        }
+        throw SessionError.pop3Error(message: response.message)
+    }
+
+    public func retr(_ index: Int) throws -> [String] {
+        client.expectMultilineResponse()
+        _ = client.send(.retr(index))
+        try ensureWrite()
+        let event = try waitForMultilineEvent()
+        if case let .multiline(response, lines) = event {
+            guard response.isSuccess else {
+                throw SessionError.pop3Error(message: response.message)
+            }
+            return lines
+        }
+        if case let .single(response) = event {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        throw SessionError.timeout
+    }
+
+    public func top(_ index: Int, lines: Int) throws -> [String] {
+        client.expectMultilineResponse()
+        _ = client.send(.top(index, lines: lines))
+        try ensureWrite()
+        let event = try waitForMultilineEvent()
+        if case let .multiline(response, lines) = event {
+            guard response.isSuccess else {
+                throw SessionError.pop3Error(message: response.message)
+            }
+            return lines
+        }
+        if case let .single(response) = event {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        throw SessionError.timeout
+    }
+
     public func list() throws -> [Pop3ListItem] {
         client.expectMultilineResponse()
         _ = client.send(.list(nil))

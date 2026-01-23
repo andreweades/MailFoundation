@@ -1272,6 +1272,50 @@ func asyncSmtpSessionFlow() async throws {
 }
 
 @available(macOS 10.15, iOS 13.0, *)
+@Test("Async SMTP session extra commands")
+func asyncSmtpSessionExtraCommands() async throws {
+    let transport = AsyncStreamTransport()
+    let session = AsyncSmtpSession(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("220 Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let noopTask = Task { try await session.noop() }
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    _ = try await noopTask.value
+
+    let rsetTask = Task { try await session.rset() }
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    _ = try await rsetTask.value
+
+    let vrfyTask = Task { try await session.vrfy("user") }
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    _ = try await vrfyTask.value
+
+    let expnTask = Task { try await session.expn("list") }
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    _ = try await expnTask.value
+
+    let helpTask = Task { try await session.help() }
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    _ = try await helpTask.value
+
+    let mailTask = Task { try await session.mailFrom("alice@example.com") }
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    _ = try await mailTask.value
+
+    let rcptTask = Task { try await session.rcptTo("bob@example.com") }
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    _ = try await rcptTask.value
+
+    let dataTask = Task { try await session.data(Array("Hello\r\n".utf8)) }
+    await transport.yieldIncoming(Array("354 End data\r\n".utf8))
+    await transport.yieldIncoming(Array("250 OK\r\n".utf8))
+    _ = try await dataTask.value
+}
+
+@available(macOS 10.15, iOS 13.0, *)
 @Test("Async SMTP session send mail")
 func asyncSmtpSessionSendMail() async throws {
     let transport = AsyncStreamTransport()
@@ -1392,6 +1436,57 @@ func asyncPop3SessionFlow() async throws {
     await transport.yieldIncoming(Array("+OK\r\n".utf8))
     let result = try await authTask.value
     #expect(result.pass?.isSuccess == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async POP3 session extra commands")
+func asyncPop3SessionExtraCommands() async throws {
+    let transport = AsyncStreamTransport()
+    let session = AsyncPop3Session(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("+OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let noopTask = Task { try await session.noop() }
+    await transport.yieldIncoming(Array("+OK\r\n".utf8))
+    _ = try await noopTask.value
+
+    let rsetTask = Task { try await session.rset() }
+    await transport.yieldIncoming(Array("+OK\r\n".utf8))
+    _ = try await rsetTask.value
+
+    let deleTask = Task { try await session.dele(2) }
+    await transport.yieldIncoming(Array("+OK\r\n".utf8))
+    _ = try await deleTask.value
+
+    let listTask = Task { try await session.list(2) }
+    await transport.yieldIncoming(Array("+OK 2 120\r\n".utf8))
+    let listItem = try await listTask.value
+    #expect(listItem.size == 120)
+
+    let uidlTask = Task { try await session.uidl(2) }
+    await transport.yieldIncoming(Array("+OK 2 abc\r\n".utf8))
+    let uidlItem = try await uidlTask.value
+    #expect(uidlItem.uid == "abc")
+
+    let retrTask = Task { try await session.retr(2) }
+    await transport.yieldIncoming(Array("+OK\r\nline1\r\n.\r\n".utf8))
+    let retrLines = try await retrTask.value
+    #expect(retrLines.first == "line1")
+
+    let topTask = Task { try await session.top(2, lines: 1) }
+    await transport.yieldIncoming(Array("+OK\r\nheader1\r\n.\r\n".utf8))
+    let topLines = try await topTask.value
+    #expect(topLines.first == "header1")
+
+    let apopTask = Task { try await session.apop(user: "user", digest: "digest") }
+    await transport.yieldIncoming(Array("+OK\r\n".utf8))
+    _ = try await apopTask.value
+
+    let authTask = Task { try await session.auth(mechanism: "PLAIN") }
+    await transport.yieldIncoming(Array("+OK\r\n".utf8))
+    _ = try await authTask.value
 }
 
 @available(macOS 10.15, iOS 13.0, *)
@@ -1821,6 +1916,32 @@ func syncSmtpSessionFlow() throws {
     #expect(sent.contains("MAIL FROM:<alice@example.com>\r\n"))
 }
 
+@Test("Sync SMTP session extra commands")
+func syncSmtpSessionExtraCommands() throws {
+    let transport = TestTransport(incoming: [
+        Array("220 Ready\r\n".utf8),
+        Array("250 OK\r\n".utf8),
+        Array("250 OK\r\n".utf8),
+        Array("250 OK\r\n".utf8),
+        Array("250 OK\r\n".utf8),
+        Array("250 OK\r\n".utf8),
+        Array("250 OK\r\n".utf8),
+        Array("250 OK\r\n".utf8),
+        Array("354 End data\r\n".utf8),
+        Array("250 OK\r\n".utf8)
+    ])
+    let session = SmtpSession(transport: transport, maxReads: 3)
+    _ = try session.connect()
+    _ = try session.noop()
+    _ = try session.rset()
+    _ = try session.vrfy("user")
+    _ = try session.expn("list")
+    _ = try session.help()
+    _ = try session.mailFrom("alice@example.com")
+    _ = try session.rcptTo("bob@example.com")
+    _ = try session.sendData(Array("Hello\r\n".utf8))
+}
+
 @Test("Sync SMTP session write failure")
 func syncSmtpSessionWriteFailure() throws {
     let transport = FailingTransport(incoming: [Array("220 Ready\r\n".utf8)])
@@ -1864,6 +1985,37 @@ func syncPop3SessionFlow() throws {
     #expect(caps.supports("USER") == true)
     let stat = try session.stat()
     #expect(stat.count == 2)
+}
+
+@Test("Sync POP3 session extra commands")
+func syncPop3SessionExtraCommands() throws {
+    let transport = TestTransport(incoming: [
+        Array("+OK Ready\r\n".utf8),
+        Array("+OK\r\n".utf8),
+        Array("+OK\r\n".utf8),
+        Array("+OK\r\n".utf8),
+        Array("+OK 2 120\r\n".utf8),
+        Array("+OK 2 abc\r\n".utf8),
+        Array("+OK\r\nline1\r\n.\r\n".utf8),
+        Array("+OK\r\nheader1\r\n.\r\n".utf8),
+        Array("+OK\r\n".utf8),
+        Array("+OK\r\n".utf8)
+    ])
+    let session = Pop3Session(transport: transport, maxReads: 3)
+    _ = try session.connect()
+    _ = try session.noop()
+    _ = try session.rset()
+    _ = try session.dele(2)
+    let listItem = try session.list(2)
+    #expect(listItem.size == 120)
+    let uidlItem = try session.uidl(2)
+    #expect(uidlItem.uid == "abc")
+    let retrLines = try session.retr(2)
+    #expect(retrLines.first == "line1")
+    let topLines = try session.top(2, lines: 1)
+    #expect(topLines.first == "header1")
+    _ = try session.apop(user: "user", digest: "digest")
+    _ = try session.auth(mechanism: "PLAIN")
 }
 
 @Test("Sync IMAP session flow")

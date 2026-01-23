@@ -39,6 +39,45 @@ public actor AsyncSmtpSession {
         return await client.waitForResponse()
     }
 
+    public func noop() async throws -> SmtpResponse? {
+        _ = try await client.send(.noop)
+        return await client.waitForResponse()
+    }
+
+    public func rset() async throws -> SmtpResponse? {
+        _ = try await client.send(.rset)
+        return await client.waitForResponse()
+    }
+
+    public func vrfy(_ argument: String) async throws -> SmtpResponse? {
+        _ = try await client.send(.vrfy(argument))
+        return await client.waitForResponse()
+    }
+
+    public func expn(_ argument: String) async throws -> SmtpResponse? {
+        _ = try await client.send(.expn(argument))
+        return await client.waitForResponse()
+    }
+
+    public func help(_ argument: String? = nil) async throws -> SmtpResponse? {
+        _ = try await client.send(.help(argument))
+        return await client.waitForResponse()
+    }
+
+    public func mailFrom(_ address: String) async throws -> SmtpResponse? {
+        _ = try await client.send(.mailFrom(address))
+        return await client.waitForResponse()
+    }
+
+    public func rcptTo(_ address: String) async throws -> SmtpResponse? {
+        _ = try await client.send(.rcptTo(address))
+        return await client.waitForResponse()
+    }
+
+    public func data(_ message: [UInt8]) async throws -> SmtpResponse? {
+        try await client.sendData(message)
+    }
+
     public func authenticate(mechanism: String, initialResponse: String? = nil) async throws -> SmtpResponse? {
         try await client.authenticate(mechanism: mechanism, initialResponse: initialResponse)
     }

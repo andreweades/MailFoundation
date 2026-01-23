@@ -38,6 +38,85 @@ public actor AsyncPop3Session {
         try await client.authenticate(user: user, password: password)
     }
 
+    public func apop(user: String, digest: String) async throws -> Pop3Response? {
+        _ = try await client.send(.apop(user, digest))
+        return await client.waitForResponse()
+    }
+
+    public func auth(mechanism: String, initialResponse: String? = nil) async throws -> Pop3Response? {
+        _ = try await client.send(.auth(mechanism, initialResponse: initialResponse))
+        return await client.waitForResponse()
+    }
+
+    public func noop() async throws -> Pop3Response? {
+        _ = try await client.send(.noop)
+        return await client.waitForResponse()
+    }
+
+    public func rset() async throws -> Pop3Response? {
+        _ = try await client.send(.rset)
+        return await client.waitForResponse()
+    }
+
+    public func dele(_ index: Int) async throws -> Pop3Response? {
+        _ = try await client.send(.dele(index))
+        return await client.waitForResponse()
+    }
+
+    public func list(_ index: Int) async throws -> Pop3ListItem {
+        _ = try await client.send(.list(index))
+        guard let response = await client.waitForResponse() else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess, let item = Pop3ListItem.parseLine(response.message) else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        return item
+    }
+
+    public func uidl(_ index: Int) async throws -> Pop3UidlItem {
+        _ = try await client.send(.uidl(index))
+        guard let response = await client.waitForResponse() else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess, let item = Pop3UidlItem.parseLine(response.message) else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        return item
+    }
+
+    public func retr(_ index: Int) async throws -> [String] {
+        await client.expectMultilineResponse()
+        _ = try await client.send(.retr(index))
+        let event = try await waitForMultilineEvent()
+        if case let .multiline(response, lines) = event {
+            guard response.isSuccess else {
+                throw SessionError.pop3Error(message: response.message)
+            }
+            return lines
+        }
+        if case let .single(response) = event {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        throw SessionError.timeout
+    }
+
+    public func top(_ index: Int, lines: Int) async throws -> [String] {
+        await client.expectMultilineResponse()
+        _ = try await client.send(.top(index, lines: lines))
+        let event = try await waitForMultilineEvent()
+        if case let .multiline(response, lines) = event {
+            guard response.isSuccess else {
+                throw SessionError.pop3Error(message: response.message)
+            }
+            return lines
+        }
+        if case let .single(response) = event {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        throw SessionError.timeout
+    }
+
     public func stat() async throws -> Pop3StatResponse {
         _ = try await client.send(.stat)
         guard let response = await client.waitForResponse() else {
