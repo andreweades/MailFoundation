@@ -7,8 +7,10 @@
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncImapSession {
     private let client: AsyncImapClient
+    private let transport: AsyncTransport
 
     public init(transport: AsyncTransport) {
+        self.transport = transport
         self.client = AsyncImapClient(transport: transport)
     }
 
@@ -139,6 +141,32 @@ public actor AsyncImapSession {
     public func fetchAttributes(_ set: String, items: String, maxEmptyReads: Int = 10) async throws -> [ImapFetchAttributes] {
         let responses = try await fetch(set, items: items, maxEmptyReads: maxEmptyReads)
         return responses.compactMap(ImapFetchAttributes.parse)
+    }
+
+    public func startTls(validateCertificate: Bool = true, maxEmptyReads: Int = 10) async throws -> ImapResponse {
+        guard let tlsTransport = transport as? AsyncStartTlsTransport else {
+            throw SessionError.startTlsNotSupported
+        }
+        let command = try await client.send(.starttls)
+        var emptyReads = 0
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                    guard response.isOk else {
+                        throw SessionError.imapError(status: response.status, text: response.text)
+                    }
+                    try await tlsTransport.startTLS(validateCertificate: validateCertificate)
+                    return response
+                }
+            }
+        }
+        throw SessionError.timeout
     }
 
     private func waitForGreeting() async -> ImapResponse? {

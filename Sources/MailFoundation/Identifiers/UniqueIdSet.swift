@@ -594,6 +594,17 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
             return nil
         }
 
+        func skipWhitespace(_ bytes: [UInt8], _ index: inout Int) {
+            while index < bytes.count {
+                let byte = bytes[index]
+                if byte == 32 || byte == 9 {
+                    index += 1
+                } else {
+                    break
+                }
+            }
+        }
+
         var set = UniqueIdSet(validity: validity)
         var order: SortOrder = .none
         var sorted = true
@@ -602,6 +613,7 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         var prev: UInt32 = 0
 
         while true {
+            skipWhitespace(bytes, &index)
             guard let start = parseUidOrStar(bytes: bytes, index: &index) else {
                 return nil
             }
@@ -609,8 +621,10 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
             min = Swift.min(min, start)
             max = Swift.max(max, start)
 
+            skipWhitespace(bytes, &index)
             if index < bytes.count, bytes[index] == 58 {
                 index += 1
+                skipWhitespace(bytes, &index)
                 guard let end = parseUidOrStar(bytes: bytes, index: &index) else {
                     return nil
                 }
@@ -652,6 +666,7 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
                 prev = start
             }
 
+            skipWhitespace(bytes, &index)
             if index >= bytes.count {
                 break
             }

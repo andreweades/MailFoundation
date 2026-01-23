@@ -7,8 +7,10 @@
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncPop3Session {
     private let client: AsyncPop3Client
+    private let transport: AsyncTransport
 
     public init(transport: AsyncTransport) {
+        self.transport = transport
         self.client = AsyncPop3Client(transport: transport)
     }
 
@@ -77,6 +79,21 @@ public actor AsyncPop3Session {
             throw SessionError.pop3Error(message: response.message)
         }
         throw SessionError.timeout
+    }
+
+    public func startTls(validateCertificate: Bool = true) async throws -> Pop3Response {
+        guard let tlsTransport = transport as? AsyncStartTlsTransport else {
+            throw SessionError.startTlsNotSupported
+        }
+        _ = try await client.send(.stls)
+        guard let response = await client.waitForResponse() else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw SessionError.pop3Error(message: response.message)
+        }
+        try await tlsTransport.startTLS(validateCertificate: validateCertificate)
+        return response
     }
 
     public func state() async -> AsyncPop3Client.State {

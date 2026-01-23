@@ -145,23 +145,43 @@ public struct UniqueIdRange: Sendable, Sequence, CustomStringConvertible {
         let bytes = Array(trimmed.utf8)
         var index = 0
 
+        func skipWhitespace(_ bytes: [UInt8], _ index: inout Int) {
+            while index < bytes.count {
+                let byte = bytes[index]
+                if byte == 32 || byte == 9 {
+                    index += 1
+                } else {
+                    break
+                }
+            }
+        }
+
+        skipWhitespace(bytes, &index)
         guard let start = UniqueId.parseNonZeroUInt32(bytes: bytes, index: &index) else {
             return nil
         }
 
+        skipWhitespace(bytes, &index)
         guard index < bytes.count, bytes[index] == 58 else {
             return nil
         }
         index += 1
+        skipWhitespace(bytes, &index)
 
         var end: UInt32
         if index < bytes.count, bytes[index] == 42 {
-            guard index + 1 == bytes.count else {
+            index += 1
+            skipWhitespace(bytes, &index)
+            guard index == bytes.count else {
                 return nil
             }
             end = UInt32.max
         } else {
-            guard let parsedEnd = UniqueId.parseNonZeroUInt32(bytes: bytes, index: &index), index == bytes.count else {
+            guard let parsedEnd = UniqueId.parseNonZeroUInt32(bytes: bytes, index: &index) else {
+                return nil
+            }
+            skipWhitespace(bytes, &index)
+            guard index == bytes.count else {
                 return nil
             }
             end = parsedEnd

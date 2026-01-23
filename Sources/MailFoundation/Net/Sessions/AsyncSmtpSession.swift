@@ -7,8 +7,10 @@
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncSmtpSession {
     private let client: AsyncSmtpClient
+    private let transport: AsyncTransport
 
     public init(transport: AsyncTransport) {
+        self.transport = transport
         self.client = AsyncSmtpClient(transport: transport)
     }
 
@@ -72,6 +74,21 @@ public actor AsyncSmtpSession {
         }
 
         throw SessionError.timeout
+    }
+
+    public func startTls(validateCertificate: Bool = true) async throws -> SmtpResponse {
+        guard let tlsTransport = transport as? AsyncStartTlsTransport else {
+            throw SessionError.startTlsNotSupported
+        }
+        _ = try await client.send(.starttls)
+        guard let response = await client.waitForResponse() else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw SessionError.smtpError(code: response.code, message: response.lines.joined(separator: " "))
+        }
+        try await tlsTransport.startTLS(validateCertificate: validateCertificate)
+        return response
     }
 
     public func state() async -> AsyncSmtpClient.State {

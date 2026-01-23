@@ -61,6 +61,24 @@ public extension Envelope {
             if inReplyTo == nil {
                 inReplyTo = MessageIdList.parseAll(value).last ?? value
             }
+        case "list-id":
+            listId = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case "list-archive":
+            listArchive = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case "list-help":
+            listHelp = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case "list-post":
+            listPost = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case "list-subscribe":
+            listSubscribe = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case "list-unsubscribe":
+            listUnsubscribe = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case "dkim-signature":
+            dkimSignatures.append(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        case "authentication-results":
+            authenticationResults.append(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        case "received-spf":
+            receivedSpf.append(value.trimmingCharacters(in: .whitespacesAndNewlines))
         default:
             break
         }

@@ -12,6 +12,11 @@ public protocol AsyncTransport: AnyObject, Sendable {
     func send(_ bytes: [UInt8]) async throws
 }
 
+@available(macOS 10.15, iOS 13.0, *)
+public protocol AsyncStartTlsTransport: AsyncTransport {
+    func startTLS(validateCertificate: Bool) async throws
+}
+
 public enum AsyncTransportError: Error, Sendable {
     case notStarted
     case sendFailed

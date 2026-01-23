@@ -19,6 +19,7 @@ func uniqueIdParsing() throws {
     #expect(UniqueId.tryParse("0") == nil)
     #expect(UniqueId.tryParse("abc") == nil)
     #expect(UniqueId.tryParse("4294967296") == nil)
+    #expect(UniqueId.tryParse(" 7 ")?.id == 7)
 
     let parsed = try UniqueId.parse("12", validity: 9)
     #expect(parsed.id == 12)
@@ -35,6 +36,10 @@ func uniqueIdRangeParsing() throws {
 
     let anyRange = try UniqueIdRange.parse("2:*")
     #expect(anyRange.description == "2:*")
+
+    let spacedRange = try UniqueIdRange.parse(" 2 : * ")
+    #expect(spacedRange.description == "2:*")
+    #expect(UniqueIdRange.tryParse("2:") == nil)
 }
 
 @Test("UniqueIdSet add and serialize")
@@ -66,6 +71,10 @@ func uniqueIdSetParsing() throws {
 
     let starSet = try UniqueIdSet.parse("1:*,*", validity: 0)
     #expect(starSet.description == "1:*,*")
+
+    let spacedSet = try UniqueIdSet.parse("1 : 3 , 5 , 7 : 6")
+    #expect(spacedSet.description == "1:3,5,7:6")
+    #expect(UniqueIdSet.tryParse("0") == nil)
 }
 
 @Test("UniqueIdRange utilities")
@@ -94,6 +103,40 @@ func uniqueIdMapMapping() {
 
     let dict = map.toDictionary()
     #expect(dict[UniqueId(id: 1)]?.id == 10)
+
+    let pairsMap = UniqueIdMap(pairs: [(UniqueId(id: 4), UniqueId(id: 40))])
+    #expect(pairsMap.pairs.count == 1)
+
+    let dictMap = UniqueIdMap(dictionary: [UniqueId(id: 2): UniqueId(id: 20), UniqueId(id: 1): UniqueId(id: 10)])
+    #expect(dictMap.source.map { $0.id } == [1, 2])
+
+    let appended = dictMap.appending(source: UniqueId(id: 3), destination: UniqueId(id: 30))
+    #expect(appended.destination.last?.id == 30)
+
+    let merged = dictMap.appending(contentsOf: pairsMap)
+    #expect(merged.destination.last?.id == 40)
+}
+
+@Test("SearchQuery serialization")
+func searchQuerySerialization() {
+    let query = SearchQuery.from("alice@example.com")
+        .and(.subject("Hello"))
+        .and(.unseen)
+    #expect(query.serialize() == "FROM \"alice@example.com\" SUBJECT \"Hello\" UNSEEN")
+
+    let date = Date(timeIntervalSince1970: 1704153600)
+    let dateQuery = SearchQuery.since(date)
+    #expect(dateQuery.serialize() == "SINCE 02-Jan-2024")
+
+    let orQuery = SearchQuery.or(.from("a@example.com"), .and([.to("b@example.com"), .subject("c")]))
+    #expect(orQuery.serialize() == "OR FROM \"a@example.com\" (TO \"b@example.com\" SUBJECT \"c\")")
+
+    let uidSet = UniqueIdSet([UniqueId(id: 1), UniqueId(id: 2)])
+    let uidQuery = SearchQuery.uid(uidSet)
+    #expect(uidQuery.serialize() == "UID \(uidSet.description)")
+
+    let headerQuery = SearchQuery.header("X-Test", "value")
+    #expect(headerQuery.serialize() == "HEADER \"X-Test\" \"value\"")
 }
 
 @Test("MessageFlags options")
@@ -139,13 +182,24 @@ func envelopeApplyHeaders() {
         "Subject": "=?UTF-8?B?SGVsbG8=?=",
         "From": "Alice <alice@example.com>",
         "Message-Id": "<msgid@example.com>",
-        "In-Reply-To": "<reply@example.com>"
+        "In-Reply-To": "<reply@example.com>",
+        "List-Id": "Example List <list.example.com>",
+        "List-Unsubscribe": "<mailto:unsubscribe@example.com>",
+        "DKIM-Signature": "v=1; a=rsa-sha256; d=example.com; s=mail;",
+        "Authentication-Results": "mx.example.com; spf=pass",
+        "Received-SPF": "pass"
     ])
+    envelope.apply(header: "DKIM-Signature", value: "v=1; a=rsa-sha256; d=example.com; s=mail2;")
     #expect(envelope.subject == "Hello")
     let from = envelope.from[envelope.from.startIndex] as? MailboxAddress
     #expect(from?.address == "alice@example.com")
     #expect(envelope.messageId == "<msgid@example.com>")
     #expect(envelope.inReplyTo == "<reply@example.com>")
+    #expect(envelope.listId == "Example List <list.example.com>")
+    #expect(envelope.listUnsubscribe == "<mailto:unsubscribe@example.com>")
+    #expect(envelope.dkimSignatures.count == 2)
+    #expect(envelope.authenticationResults.first == "mx.example.com; spf=pass")
+    #expect(envelope.receivedSpf.first == "pass")
 }
 
 @Test("Envelope apply SwiftMimeKit headers")
@@ -776,6 +830,26 @@ func asyncSmtpSessionSendMail() async throws {
 }
 
 @available(macOS 10.15, iOS 13.0, *)
+@Test("Async SMTP session STARTTLS")
+func asyncSmtpSessionStartTls() async throws {
+    let transport = StartTlsAsyncTransport()
+    let session = AsyncSmtpSession(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("220 Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let startTlsTask = Task { try await session.startTls(validateCertificate: false) }
+    await transport.yieldIncoming(Array("220 Go ahead\r\n".utf8))
+    let response = try await startTlsTask.value
+    #expect(response.code == 220)
+    #expect(await transport.didStartTls() == true)
+    #expect(await transport.lastStartTlsValidation() == false)
+    let sent = await transport.sentSnapshot()
+    #expect(String(decoding: sent.first ?? [], as: UTF8.self) == "STARTTLS\r\n")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
 @Test("Async SMTP capabilities")
 func asyncSmtpCapabilities() async throws {
     let transport = AsyncStreamTransport()
@@ -855,6 +929,26 @@ func asyncPop3SessionFlow() async throws {
     await transport.yieldIncoming(Array("+OK\r\n".utf8))
     let result = try await authTask.value
     #expect(result.pass?.isSuccess == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async POP3 session STARTTLS")
+func asyncPop3SessionStartTls() async throws {
+    let transport = StartTlsAsyncTransport()
+    let session = AsyncPop3Session(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("+OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let startTlsTask = Task { try await session.startTls(validateCertificate: true) }
+    await transport.yieldIncoming(Array("+OK Begin TLS\r\n".utf8))
+    let response = try await startTlsTask.value
+    #expect(response.isSuccess == true)
+    #expect(await transport.didStartTls() == true)
+    #expect(await transport.lastStartTlsValidation() == true)
+    let sent = await transport.sentSnapshot()
+    #expect(String(decoding: sent.first ?? [], as: UTF8.self) == "STLS\r\n")
 }
 
 @available(macOS 10.15, iOS 13.0, *)
@@ -971,6 +1065,26 @@ func asyncImapSessionFlow() async throws {
 }
 
 @available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP session STARTTLS")
+func asyncImapSessionStartTls() async throws {
+    let transport = StartTlsAsyncTransport()
+    let session = AsyncImapSession(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let startTlsTask = Task { try await session.startTls(validateCertificate: true) }
+    await transport.yieldIncoming(Array("A0001 OK Begin TLS\r\n".utf8))
+    let response = try await startTlsTask.value
+    #expect(response.isOk == true)
+    #expect(await transport.didStartTls() == true)
+    #expect(await transport.lastStartTlsValidation() == true)
+    let sent = await transport.sentSnapshot()
+    #expect(String(decoding: sent.first ?? [], as: UTF8.self) == "A0001 STARTTLS\r\n")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
 @Test("Async IMAP session queries")
 func asyncImapSessionQueries() async throws {
     let transport = AsyncStreamTransport()
@@ -1005,6 +1119,15 @@ func asyncTransportFactoryAsyncStream() throws {
     let transport = try AsyncTransportFactory.make(host: "localhost", port: 1, backend: .asyncStream)
     #expect(transport is AsyncStreamTransport)
 }
+
+#if canImport(Network)
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Network transport async STARTTLS support")
+func networkTransportStartTlsSupport() throws {
+    let transport = try AsyncTransportFactory.make(host: "localhost", port: 1, backend: .network)
+    #expect(transport is AsyncStartTlsTransport)
+}
+#endif
 
 @Test("Sync transport factory TCP backend")
 func transportFactoryTcp() throws {
@@ -1135,6 +1258,62 @@ final class StartTlsTestTransport: TestTransport, StartTlsTransport {
 
     func startTLS(validateCertificate: Bool) {
         didStartTls = true
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+actor StartTlsAsyncTransport: AsyncStartTlsTransport {
+    public nonisolated let incoming: AsyncStream<[UInt8]>
+    private let continuation: AsyncStream<[UInt8]>.Continuation
+    private var started = false
+    private var sent: [[UInt8]] = []
+    private var startTlsValidations: [Bool] = []
+
+    init() {
+        var continuation: AsyncStream<[UInt8]>.Continuation!
+        self.incoming = AsyncStream { cont in
+            continuation = cont
+        }
+        self.continuation = continuation
+    }
+
+    func start() async throws {
+        started = true
+    }
+
+    func stop() async {
+        started = false
+        continuation.finish()
+    }
+
+    func send(_ bytes: [UInt8]) async throws {
+        guard started else {
+            throw AsyncTransportError.notStarted
+        }
+        sent.append(bytes)
+    }
+
+    func startTLS(validateCertificate: Bool) async throws {
+        guard started else {
+            throw AsyncTransportError.notStarted
+        }
+        startTlsValidations.append(validateCertificate)
+    }
+
+    func yieldIncoming(_ bytes: [UInt8]) {
+        continuation.yield(bytes)
+    }
+
+    func sentSnapshot() -> [[UInt8]] {
+        sent
+    }
+
+    func didStartTls() -> Bool {
+        !startTlsValidations.isEmpty
+    }
+
+    func lastStartTlsValidation() -> Bool? {
+        startTlsValidations.last
     }
 }
 

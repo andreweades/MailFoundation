@@ -23,6 +23,15 @@ public final class Envelope {
     public var date: Date?
     public var messageId: String?
     public var subject: String?
+    public var listId: String?
+    public var listArchive: String?
+    public var listHelp: String?
+    public var listPost: String?
+    public var listSubscribe: String?
+    public var listUnsubscribe: String?
+    public var dkimSignatures: [String]
+    public var authenticationResults: [String]
+    public var receivedSpf: [String]
 
     public init() {
         self.from = InternetAddressList()
@@ -31,6 +40,9 @@ public final class Envelope {
         self.to = InternetAddressList()
         self.cc = InternetAddressList()
         self.bcc = InternetAddressList()
+        self.dkimSignatures = []
+        self.authenticationResults = []
+        self.receivedSpf = []
     }
 
     private static func appendQuoted(_ builder: inout String, _ value: String) {

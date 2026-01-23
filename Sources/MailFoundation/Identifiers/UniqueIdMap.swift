@@ -15,6 +15,22 @@ public struct UniqueIdMap: Sendable, Sequence {
         self.destination = destination
     }
 
+    public init(pairs: [(UniqueId, UniqueId)]) {
+        self.source = pairs.map { $0.0 }
+        self.destination = pairs.map { $0.1 }
+    }
+
+    public init(dictionary: [UniqueId: UniqueId], sortedByKey: Bool = true) {
+        if sortedByKey {
+            let keys = dictionary.keys.sorted()
+            self.source = keys
+            self.destination = keys.compactMap { dictionary[$0] }
+        } else {
+            self.source = Array(dictionary.keys)
+            self.destination = Array(dictionary.values)
+        }
+    }
+
     public var count: Int {
         source.count
     }
@@ -63,6 +79,22 @@ public struct UniqueIdMap: Sendable, Sequence {
             return nil
         }
         return destination[index]
+    }
+
+    public func appending(source key: UniqueId, destination value: UniqueId) -> UniqueIdMap {
+        var newSource = source
+        var newDestination = destination
+        newSource.append(key)
+        newDestination.append(value)
+        return UniqueIdMap(source: newSource, destination: newDestination)
+    }
+
+    public func appending(contentsOf other: UniqueIdMap) -> UniqueIdMap {
+        var newSource = source
+        var newDestination = destination
+        newSource.append(contentsOf: other.source)
+        newDestination.append(contentsOf: other.destination)
+        return UniqueIdMap(source: newSource, destination: newDestination)
     }
 
     public subscript(key: UniqueId) -> UniqueId {
