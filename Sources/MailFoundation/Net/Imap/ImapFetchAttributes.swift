@@ -77,6 +77,11 @@ public struct ImapFetchAttributes: Sendable, Equatable {
         return Envelope.tryParse(envelopeRaw)
     }
 
+    public func parsedImapEnvelope() -> ImapEnvelope? {
+        guard let envelopeRaw else { return nil }
+        return ImapEnvelope.parse(envelopeRaw)
+    }
+
     public func parsedBodyStructure() -> ImapBodyStructure? {
         guard let bodyStructure else { return nil }
         return ImapBodyStructure.parse(bodyStructure)

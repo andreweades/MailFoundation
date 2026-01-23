@@ -153,6 +153,9 @@ func imapMailboxListParsing() {
     #expect(list?.delimiter == "/")
     #expect(list?.name == "INBOX")
 
+    let mailbox = list?.toMailbox()
+    #expect(mailbox?.hasAttribute(.hasNoChildren) == true)
+
     let lsubLine = "* LSUB () NIL INBOX"
     let lsub = ImapMailboxListResponse.parse(lsubLine)
     #expect(lsub?.kind == .lsub)
@@ -181,6 +184,42 @@ func imapBodyStructureParsing() {
         #expect(multipart.parts.count == 2)
         #expect(multipart.subtype.uppercased() == "ALTERNATIVE")
         #expect(multipart.parameters["BOUNDARY"] == "abc")
+    } else {
+        #expect(Bool(false))
+    }
+}
+
+@Test("IMAP fetch BODY section helpers")
+func imapFetchBodySectionHelpers() {
+    let full = ImapFetchBody.section()
+    #expect(full == "BODY[]")
+
+    let header = ImapFetchBody.section(.header, peek: true)
+    #expect(header == "BODY.PEEK[HEADER]")
+
+    let fields = ImapFetchBody.section(.headerFields(["Subject", "From"]))
+    #expect(fields == "BODY[HEADER.FIELDS (Subject From)]")
+
+    let part = ImapFetchBody.section(ImapFetchBodySection(part: [1, 2], subsection: .text))
+    #expect(part == "BODY[1.2.TEXT]")
+
+    let partial = ImapFetchBody.section(.text, partial: ImapFetchPartial(start: 0, length: 128))
+    #expect(partial == "BODY[TEXT]<0.128>")
+}
+
+@Test("IMAP envelope parsing")
+func imapEnvelopeParsing() {
+    let raw = "(\"Wed, 01 Jan 2020 00:00:00 +0000\" \"Hello\" ((\"Alice\" NIL \"alice\" \"example.com\")) NIL NIL ((\"Bob\" NIL \"bob\" \"example.com\")) NIL NIL NIL \"<msgid>\")"
+    let envelope = ImapEnvelope.parse(raw)
+    #expect(envelope?.subject == "Hello")
+    #expect(envelope?.messageId == "<msgid>")
+    if case let .mailbox(from)? = envelope?.from.first {
+        #expect(from.address == "alice@example.com")
+    } else {
+        #expect(Bool(false))
+    }
+    if case let .mailbox(to)? = envelope?.to.first {
+        #expect(to.address == "bob@example.com")
     } else {
         #expect(Bool(false))
     }
