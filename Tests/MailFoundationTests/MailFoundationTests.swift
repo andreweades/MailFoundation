@@ -1276,6 +1276,28 @@ func pop3MultilineDecoder() {
     #expect(lines == ["1 10", "2 20"])
 }
 
+@Test("POP3 multiline decoder dot-stuffing with split chunks")
+func pop3MultilineDecoderDotStuffingSplitChunks() {
+    var decoder = Pop3MultilineDecoder()
+    decoder.expectMultiline()
+
+    let first = Array("+OK data follows\r\n\r\n..do".utf8)
+    let second = Array("t\r\nplain\r\n.\r".utf8)
+    let third = Array("\n".utf8)
+
+    _ = decoder.append(first)
+    _ = decoder.append(second)
+    let events = decoder.append(third)
+
+    #expect(events.count == 1)
+    guard case let .multiline(response, lines) = events.first else {
+        #expect(Bool(false))
+        return
+    }
+    #expect(response.status == .ok)
+    #expect(lines == ["", ".dot", "plain"])
+}
+
 @Test("IMAP literal decoder")
 func imapLiteralDecoder() {
     var decoder = ImapLiteralDecoder()
