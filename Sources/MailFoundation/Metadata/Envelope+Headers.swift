@@ -54,7 +54,7 @@ public extension Envelope {
         case "bcc":
             replaceAddressList(bcc, with: AddressParser.tryParseList(value))
         case "message-id":
-            messageId = MessageIdList.parseAll(value).first ?? value
+            messageId = MessageIdList.parseMessageId(value) ?? value
         case "in-reply-to":
             inReplyTo = MessageIdList.parseAll(value).first ?? value
         case "references":

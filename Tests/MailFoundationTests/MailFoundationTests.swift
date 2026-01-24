@@ -356,7 +356,7 @@ func imapEnvelopeParsing() {
     let raw = "(\"Wed, 01 Jan 2020 00:00:00 +0000\" \"Hello\" ((\"Alice\" NIL \"alice\" \"example.com\")) NIL NIL ((\"Bob\" NIL \"bob\" \"example.com\")) NIL NIL NIL \"<msgid>\")"
     let envelope = ImapEnvelope.parse(raw)
     #expect(envelope?.subject == "Hello")
-    #expect(envelope?.messageId == "<msgid>")
+    #expect(envelope?.messageId == "msgid")
     if case let .mailbox(from)? = envelope?.from.first {
         #expect(from.address == "alice@example.com")
     } else {
@@ -411,7 +411,7 @@ func imapEnvelopeCache() async {
     #expect(first?.subject == "Hello")
     #expect(await cache.count() == 1)
     let second = await cache.envelope(for: raw)
-    #expect(second?.messageId == "<msgid>")
+    #expect(second?.messageId == "msgid")
     #expect(await cache.count() == 1)
 }
 
@@ -626,7 +626,7 @@ func envelopeEncodeAndParse() throws {
     #expect(parsed.from.count == 1)
     let parsedFrom = parsed.from[parsed.from.startIndex] as? MailboxAddress
     #expect(parsedFrom?.address == "alice@example.com")
-    #expect(parsed.messageId == "<msgid>")
+    #expect(parsed.messageId == "msgid")
     #expect(Envelope.tryParse("NIL") == nil)
     #expect(Envelope.tryParse("nil") == nil)
 }
@@ -656,8 +656,8 @@ func envelopeApplyHeaders() {
     #expect(envelope.subject == "Hello")
     let from = envelope.from[envelope.from.startIndex] as? MailboxAddress
     #expect(from?.address == "alice@example.com")
-    #expect(envelope.messageId == "<msgid@example.com>")
-    #expect(envelope.inReplyTo == "<reply@example.com>")
+    #expect(envelope.messageId == "msgid@example.com")
+    #expect(envelope.inReplyTo == "reply@example.com")
     #expect(envelope.listId == "list.example.com")
     #expect(envelope.listUnsubscribe == "<mailto:unsubscribe@example.com>")
     #expect(envelope.dkimSignatures.count == 2)
@@ -694,7 +694,7 @@ func messageIdListParsing() {
     let value = "<id1@example.com> <id2@example.com>"
     let list = MessageIdList.parse(value)
     #expect(list?.ids.count == 2)
-    #expect(list?.ids.first == "<id1@example.com>")
+    #expect(list?.ids.first == "id1@example.com")
 
     let fallback = MessageIdList.parse("id3@example.com")
     #expect(fallback?.ids == ["id3@example.com"])
@@ -703,14 +703,14 @@ func messageIdListParsing() {
 @Test("References header parsing")
 func referencesHeaderParsing() {
     let header = ReferencesHeader.parse("<id1@example.com> <id2@example.com>")
-    #expect(header?.ids == ["<id1@example.com>", "<id2@example.com>"])
+    #expect(header?.ids == ["id1@example.com", "id2@example.com"])
     #expect(header?.description == "<id1@example.com> <id2@example.com>")
 }
 
 @Test("In-Reply-To header parsing")
 func inReplyToHeaderParsing() {
     let header = InReplyToHeader.parse("<id3@example.com>")
-    #expect(header?.ids == ["<id3@example.com>"])
+    #expect(header?.ids == ["id3@example.com"])
 }
 
 @Test("Address parser helpers")
@@ -772,7 +772,7 @@ func subjectDecoder() {
 @Test("Threading references merge")
 func threadingReferencesMerge() {
     let threading = ThreadingReferences.merge(inReplyTo: "<id3@example.com>", references: "<id1@example.com> <id2@example.com>")
-    #expect(threading?.ids == ["<id1@example.com>", "<id2@example.com>", "<id3@example.com>"])
+    #expect(threading?.ids == ["id1@example.com", "id2@example.com", "id3@example.com"])
 }
 
 @Test("ProtocolLogger prefixes and redacts")
@@ -1081,7 +1081,7 @@ func messageSummaryHeaderAndPreviewParsing() {
     let bodyMap = ImapFetchBodyMap(sequence: 1, payloads: [headerPayload, textPayload], bodies: [headerKey: headerBytes, textKey: textBytes])
 
     let summary = fetch.flatMap { MessageSummary.build(fetch: $0, bodyMap: bodyMap) }
-    #expect(summary?.references?.ids == ["<one@id>", "<two@id>"])
+    #expect(summary?.references?.ids == ["one@id", "two@id"])
     #expect(summary?.headers["SUBJECT"] == "Test")
     #expect(summary?.previewText == "Hello preview body")
     #expect(summary?.headerFetchKind == .all)

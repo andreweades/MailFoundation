@@ -12,7 +12,7 @@ public struct ThreadingReferences: Sendable, Equatable, CustomStringConvertible 
     }
 
     public var description: String {
-        ids.joined(separator: " ")
+        MessageIdList(ids).description
     }
 
     public static func merge(inReplyTo: String?, references: String?) -> ThreadingReferences? {

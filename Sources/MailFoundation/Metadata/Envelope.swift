@@ -419,6 +419,10 @@ public final class Envelope {
         MessageIdList.parseAll(value).first
     }
 
+    private static func parseMessageId(_ value: String) -> String? {
+        MessageIdList.parseMessageId(value)
+    }
+
     private static func tryParseEnvelope(_ bytes: [UInt8], index: inout Int) -> (success: Bool, value: Envelope?) {
         skipSpaces(bytes, index: &index)
         guard index < bytes.count else {
@@ -485,7 +489,7 @@ public final class Envelope {
             envelope.inReplyTo = firstReference(in: inReplyTo) ?? inReplyTo
         }
         if let messageId = messageIdResult.value {
-            envelope.messageId = firstReference(in: messageId) ?? messageId
+            envelope.messageId = parseMessageId(messageId) ?? messageId
         }
 
         return (true, envelope)

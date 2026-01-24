@@ -12,7 +12,7 @@ public struct InReplyToHeader: Sendable, Equatable, CustomStringConvertible {
     }
 
     public var description: String {
-        ids.joined(separator: " ")
+        MessageIdList(ids).description
     }
 
     public static func parse(_ value: String) -> InReplyToHeader? {
