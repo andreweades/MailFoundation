@@ -7,6 +7,12 @@
 import Foundation
 import SwiftMimeKit
 
+public enum HeaderSetError: Error, Sendable, Equatable {
+    case readOnly
+    case invalidHeaderField(String)
+    case invalidHeaderId
+}
+
 public struct HeaderSet: Sendable, Equatable, Sequence {
     private static let atomSafeCharacters = "!#$%&'*+-/=?^_`{|}~"
     private static let invariantLocale = Locale(identifier: "en_US_POSIX")
@@ -17,22 +23,19 @@ public struct HeaderSet: Sendable, Equatable, Sequence {
     private var excludeStorage: Bool
 
     public static let all = HeaderSet(exclude: true, isReadOnly: true)
-    public static let envelope = HeaderSet(
-        headers: [
-            .sender,
-            .from,
-            .replyTo,
-            .to,
-            .cc,
-            .bcc,
-            .subject,
-            .date,
-            .messageId,
-            .inReplyTo
-        ],
-        isReadOnly: true
-    )
-    public static let references = HeaderSet(headers: [.references], isReadOnly: true)
+    public static let envelope = HeaderSet.makePreset(headers: [
+        .sender,
+        .from,
+        .replyTo,
+        .to,
+        .cc,
+        .bcc,
+        .subject,
+        .date,
+        .messageId,
+        .inReplyTo
+    ])
+    public static let references = HeaderSet.makePreset(headers: [.references])
 
     public init() {
         self.storage = []
@@ -41,21 +44,21 @@ public struct HeaderSet: Sendable, Equatable, Sequence {
         self.excludeStorage = false
     }
 
-    public init(headers: [HeaderId], exclude: Bool = false, isReadOnly: Bool = false) {
+    public init(headers: [HeaderId], exclude: Bool = false, isReadOnly: Bool = false) throws {
         self.storage = []
         self.ordered = []
         self.readOnly = false
         self.excludeStorage = exclude
-        addRange(headers)
+        try addRange(headers)
         self.readOnly = isReadOnly
     }
 
-    public init(headers: [String], exclude: Bool = false, isReadOnly: Bool = false) {
+    public init(headers: [String], exclude: Bool = false, isReadOnly: Bool = false) throws {
         self.storage = []
         self.ordered = []
         self.readOnly = false
         self.excludeStorage = exclude
-        addRange(headers)
+        try addRange(headers)
         self.readOnly = isReadOnly
     }
 
@@ -79,11 +82,12 @@ public struct HeaderSet: Sendable, Equatable, Sequence {
     }
 
     public var exclude: Bool {
-        get { excludeStorage }
-        set {
-            checkReadOnly()
-            excludeStorage = newValue
-        }
+        excludeStorage
+    }
+
+    public mutating func setExclude(_ value: Bool) throws {
+        try checkReadOnly()
+        excludeStorage = value
     }
 
     public func contains(_ header: String) -> Bool {
@@ -95,43 +99,55 @@ public struct HeaderSet: Sendable, Equatable, Sequence {
         return storage.contains(normalize(header.headerName))
     }
 
-    public mutating func add(_ header: HeaderId) {
-        precondition(header != .unknown, "HeaderId.unknown is not valid for HeaderSet.")
-        checkReadOnly()
-        insert(normalize(header.headerName))
+    @discardableResult
+    public mutating func add(_ header: HeaderId) throws -> Bool {
+        guard header != .unknown else {
+            throw HeaderSetError.invalidHeaderId
+        }
+        try checkReadOnly()
+        return insert(normalize(header.headerName))
     }
 
-    public mutating func add(_ header: String) {
-        precondition(HeaderSet.isValid(header), "The header field is invalid.")
-        checkReadOnly()
-        insert(normalize(header))
+    @discardableResult
+    public mutating func add(_ header: String) throws -> Bool {
+        guard HeaderSet.isValid(header) else {
+            throw HeaderSetError.invalidHeaderField(header)
+        }
+        try checkReadOnly()
+        return insert(normalize(header))
     }
 
-    public mutating func addRange(_ headers: [HeaderId]) {
+    public mutating func addRange(_ headers: [HeaderId]) throws {
+        try checkReadOnly()
         for header in headers {
-            add(header)
+            _ = try add(header)
         }
     }
 
-    public mutating func addRange(_ headers: [String]) {
+    public mutating func addRange(_ headers: [String]) throws {
+        try checkReadOnly()
         for header in headers {
-            add(header)
+            _ = try add(header)
         }
     }
 
-    public mutating func remove(_ header: HeaderId) {
-        precondition(header != .unknown, "HeaderId.unknown is not valid for HeaderSet.")
-        checkReadOnly()
-        removeNormalized(normalize(header.headerName))
+    @discardableResult
+    public mutating func remove(_ header: HeaderId) throws -> Bool {
+        guard header != .unknown else {
+            throw HeaderSetError.invalidHeaderId
+        }
+        try checkReadOnly()
+        return removeNormalized(normalize(header.headerName))
     }
 
-    public mutating func remove(_ header: String) {
-        checkReadOnly()
-        removeNormalized(normalize(header))
+    @discardableResult
+    public mutating func remove(_ header: String) throws -> Bool {
+        try checkReadOnly()
+        return removeNormalized(normalize(header))
     }
 
-    public mutating func clear() {
-        checkReadOnly()
+    public mutating func clear() throws {
+        try checkReadOnly()
         storage.removeAll(keepingCapacity: true)
         ordered.removeAll(keepingCapacity: true)
     }
@@ -148,24 +164,34 @@ public struct HeaderSet: Sendable, Equatable, Sequence {
         isValid(header)
     }
 
-    private mutating func insert(_ header: String) {
-        guard !storage.contains(header) else { return }
+    @discardableResult
+    private mutating func insert(_ header: String) -> Bool {
+        guard !storage.contains(header) else { return false }
         storage.insert(header)
         ordered.append(header)
+        return true
     }
 
-    private mutating func removeNormalized(_ header: String) {
-        guard storage.contains(header) else { return }
+    @discardableResult
+    private mutating func removeNormalized(_ header: String) -> Bool {
+        guard storage.contains(header) else { return false }
         storage.remove(header)
         ordered.removeAll { $0 == header }
+        return true
     }
 
     private func normalize(_ header: String) -> String {
+        HeaderSet.normalizeHeader(header)
+    }
+
+    private static func normalizeHeader(_ header: String) -> String {
         header.uppercased(with: HeaderSet.invariantLocale)
     }
 
-    private func checkReadOnly() {
-        precondition(!readOnly, "HeaderSet is read-only.")
+    private func checkReadOnly() throws {
+        if readOnly {
+            throw HeaderSetError.readOnly
+        }
     }
 
     private static func isValid(_ header: String) -> Bool {
@@ -179,6 +205,15 @@ public struct HeaderSet: Sendable, Equatable, Sequence {
             }
         }
         return true
+    }
+
+    private static func makePreset(headers: [HeaderId]) -> HeaderSet {
+        var set = HeaderSet()
+        for header in headers where header != .unknown {
+            set.insert(normalizeHeader(header.headerName))
+        }
+        set.readOnly = true
+        return set
     }
 
     private static func isAsciiAtom(_ byte: UInt8) -> Bool {

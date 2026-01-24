@@ -2,7 +2,7 @@ import Testing
 @testable import MailFoundation
 
 @Test("HeaderSet validates field names")
-func headerSetValidatesFieldNames() {
+func headerSetValidatesFieldNames() throws {
     let valid = [
         "Subject",
         "X-Custom-Header",
@@ -24,11 +24,23 @@ func headerSetValidatesFieldNames() {
     for field in invalid {
         #expect(HeaderSet.isValidFieldName(field) == false)
     }
+
+    #expect(throws: HeaderSetError.invalidHeaderField("Subject:")) {
+        _ = try HeaderSet(headers: ["Subject:"])
+    }
+    #expect(throws: HeaderSetError.invalidHeaderId) {
+        var set = HeaderSet()
+        _ = try set.add(.unknown)
+    }
+    #expect(throws: HeaderSetError.readOnly) {
+        var set = HeaderSet.envelope
+        _ = try set.add("X-Test")
+    }
 }
 
 @Test("HeaderSet normalizes and preserves order")
-func headerSetNormalizationAndOrder() {
-    let set = HeaderSet(headers: ["Subject", "Date", "subject"])
+func headerSetNormalizationAndOrder() throws {
+    let set = try HeaderSet(headers: ["Subject", "Date", "subject"])
     #expect(set.orderedHeaders == ["SUBJECT", "DATE"])
 }
 

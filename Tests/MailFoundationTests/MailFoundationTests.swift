@@ -1053,11 +1053,11 @@ func messageSummaryFromFetch() {
 }
 
 @Test("Fetch request serialization")
-func fetchRequestSerialization() {
+func fetchRequestSerialization() throws {
     let request = FetchRequest(items: [.flags, .internalDate, .size, .uniqueId])
     #expect(request.imapItemList == "(FLAGS INTERNALDATE RFC822.SIZE UID)")
 
-    let headerRequest = FetchRequest(items: [.headers, .references], headers: ["Subject"])
+    let headerRequest = try FetchRequest(items: [.headers, .references], headers: ["Subject"])
     #expect(headerRequest.imapItemList == "BODY.PEEK[HEADER.FIELDS (SUBJECT REFERENCES)]")
 
     let previewRequest = FetchRequest(items: [.previewText])

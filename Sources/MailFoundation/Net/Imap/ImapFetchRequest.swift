@@ -18,15 +18,15 @@ public struct FetchRequest: Sendable, Equatable {
         self.changedSince = changedSince
     }
 
-    public init(items: MessageSummaryItems = .none, headers: [HeaderId], changedSince: UInt64? = nil) {
+    public init(items: MessageSummaryItems = .none, headers: [HeaderId], changedSince: UInt64? = nil) throws {
         self.items = items
-        self.headers = HeaderSet(headers: headers)
+        self.headers = try HeaderSet(headers: headers)
         self.changedSince = changedSince
     }
 
-    public init(items: MessageSummaryItems = .none, headers: [String], changedSince: UInt64? = nil) {
+    public init(items: MessageSummaryItems = .none, headers: [String], changedSince: UInt64? = nil) throws {
         self.items = items
-        self.headers = HeaderSet(headers: headers)
+        self.headers = try HeaderSet(headers: headers)
         self.changedSince = changedSince
     }
 
