@@ -94,6 +94,11 @@ public final class SmtpSession {
         throw SessionError.smtpError(code: response.code, message: response.lines.joined(separator: " "))
     }
 
+    public func vrfyResult(_ argument: String) throws -> SmtpVrfyResult {
+        let response = try vrfy(argument)
+        return SmtpVrfyResult(response: response)
+    }
+
     public func expn(_ argument: String) throws -> SmtpResponse {
         _ = client.send(.expn(argument))
         try ensureWrite()
@@ -106,6 +111,11 @@ public final class SmtpSession {
         throw SessionError.smtpError(code: response.code, message: response.lines.joined(separator: " "))
     }
 
+    public func expnResult(_ argument: String) throws -> SmtpExpnResult {
+        let response = try expn(argument)
+        return SmtpExpnResult(response: response)
+    }
+
     public func help(_ argument: String? = nil) throws -> SmtpResponse {
         _ = client.send(.help(argument))
         try ensureWrite()
@@ -116,6 +126,11 @@ public final class SmtpSession {
             return response
         }
         throw SessionError.smtpError(code: response.code, message: response.lines.joined(separator: " "))
+    }
+
+    public func helpResult(_ argument: String? = nil) throws -> SmtpHelpResult {
+        let response = try help(argument)
+        return SmtpHelpResult(response: response)
     }
 
     public func mailFrom(_ address: String) throws -> SmtpResponse {

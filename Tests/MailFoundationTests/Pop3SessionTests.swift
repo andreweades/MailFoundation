@@ -60,6 +60,33 @@ func syncPop3SessionStreamedData() throws {
     #expect(topBytes == Array("baz".utf8))
 }
 
+@Test("Sync POP3 session data responses")
+func syncPop3SessionDataResponses() throws {
+    let retrData = "Subject: Hello\r\n\r\nBody"
+    let topData = "Subject: Preview\r\n\r\nLine"
+    let retrChunk = Array("+OK\r\n".utf8) + Array(retrData.utf8) + Array("\r\n.\r\n".utf8)
+    let topChunk = Array("+OK\r\n".utf8) + Array(topData.utf8) + Array("\r\n.\r\n".utf8)
+
+    let transport = TestTransport(incoming: [
+        Array("+OK Ready\r\n".utf8),
+        Array("+OK\r\n".utf8),
+        Array("+OK\r\n".utf8),
+        retrChunk,
+        topChunk
+    ])
+    let session = Pop3Session(transport: transport, maxReads: 3)
+    _ = try session.connect()
+    _ = try session.authenticate(user: "user", password: "pass")
+
+    let retrResponse = try session.retrData(1)
+    #expect(retrResponse.data == Array(retrData.utf8))
+    #expect(retrResponse.parseHeaders()[.subject] == "Hello")
+
+    let topResponse = try session.topData(1, lines: 1)
+    #expect(topResponse.data == Array(topData.utf8))
+    #expect(topResponse.parseHeaders()[.subject] == "Preview")
+}
+
 @available(macOS 10.15, iOS 13.0, *)
 @Test("Async POP3 session LAST and raw bytes")
 func asyncPop3SessionLastAndRawBytes() async throws {
@@ -139,6 +166,39 @@ func asyncPop3SessionStreamedData() async throws {
     _ = try await topTask.value
     let topBytes = await topCollector.snapshot()
     #expect(topBytes == Array("baz".utf8))
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async POP3 session data responses")
+func asyncPop3SessionDataResponses() async throws {
+    let retrData = "Subject: Hello\r\n\r\nBody"
+    let topData = "Subject: Preview\r\n\r\nLine"
+    let retrChunk = Array("+OK\r\n".utf8) + Array(retrData.utf8) + Array("\r\n.\r\n".utf8)
+    let topChunk = Array("+OK\r\n".utf8) + Array(topData.utf8) + Array("\r\n.\r\n".utf8)
+
+    let transport = AsyncStreamTransport()
+    let session = AsyncPop3Session(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("+OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await session.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("+OK\r\n".utf8))
+    await transport.yieldIncoming(Array("+OK\r\n".utf8))
+    _ = try await authTask.value
+
+    let retrTask = Task { try await session.retrData(1) }
+    await transport.yieldIncoming(retrChunk)
+    let retrResponse = try await retrTask.value
+    #expect(retrResponse.data == Array(retrData.utf8))
+    #expect(retrResponse.parseHeaders()[.subject] == "Hello")
+
+    let topTask = Task { try await session.topData(1, lines: 1) }
+    await transport.yieldIncoming(topChunk)
+    let topResponse = try await topTask.value
+    #expect(topResponse.data == Array(topData.utf8))
+    #expect(topResponse.parseHeaders()[.subject] == "Preview")
 }
 
 @available(macOS 10.15, iOS 13.0, *)

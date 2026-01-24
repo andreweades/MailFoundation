@@ -212,6 +212,14 @@ public final class Pop3Session {
         throw SessionError.timeout
     }
 
+    public func retrData(_ index: Int) throws -> Pop3MessageData {
+        try ensureAuthenticated()
+        _ = client.send(.retr(index))
+        try ensureWrite()
+        let (response, data) = try waitForMultilineDataResponse()
+        return Pop3MessageData(response: response, data: data)
+    }
+
     public func retrRaw(_ index: Int) throws -> [UInt8] {
         try ensureAuthenticated()
         _ = client.send(.retr(index))
@@ -242,6 +250,14 @@ public final class Pop3Session {
             throw SessionError.pop3Error(message: response.message)
         }
         throw SessionError.timeout
+    }
+
+    public func topData(_ index: Int, lines: Int) throws -> Pop3MessageData {
+        try ensureAuthenticated()
+        _ = client.send(.top(index, lines: lines))
+        try ensureWrite()
+        let (response, data) = try waitForMultilineDataResponse()
+        return Pop3MessageData(response: response, data: data)
     }
 
     public func topRaw(_ index: Int, lines: Int) throws -> [UInt8] {
@@ -358,7 +374,7 @@ public final class Pop3Session {
         throw SessionError.timeout
     }
 
-    private func waitForMultilineData() throws -> [UInt8] {
+    private func waitForMultilineDataResponse() throws -> (Pop3Response, [UInt8]) {
         var decoder = Pop3MultilineByteDecoder()
         decoder.expectMultiline()
         var reads = 0
@@ -378,11 +394,16 @@ public final class Pop3Session {
                     guard response.isSuccess else {
                         throw SessionError.pop3Error(message: response.message)
                     }
-                    return data
+                    return (response, data)
                 }
             }
         }
         throw SessionError.timeout
+    }
+
+    private func waitForMultilineData() throws -> [UInt8] {
+        let (_, data) = try waitForMultilineDataResponse()
+        return data
     }
 
     private func streamMultilineData(into sink: ([UInt8]) throws -> Void) throws {

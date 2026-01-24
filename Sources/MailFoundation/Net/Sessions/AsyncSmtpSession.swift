@@ -54,14 +54,35 @@ public actor AsyncSmtpSession {
         return await client.waitForResponse()
     }
 
+    public func vrfyResult(_ argument: String) async throws -> SmtpVrfyResult {
+        guard let response = try await vrfy(argument) else {
+            throw SessionError.timeout
+        }
+        return SmtpVrfyResult(response: response)
+    }
+
     public func expn(_ argument: String) async throws -> SmtpResponse? {
         _ = try await client.send(.expn(argument))
         return await client.waitForResponse()
     }
 
+    public func expnResult(_ argument: String) async throws -> SmtpExpnResult {
+        guard let response = try await expn(argument) else {
+            throw SessionError.timeout
+        }
+        return SmtpExpnResult(response: response)
+    }
+
     public func help(_ argument: String? = nil) async throws -> SmtpResponse? {
         _ = try await client.send(.help(argument))
         return await client.waitForResponse()
+    }
+
+    public func helpResult(_ argument: String? = nil) async throws -> SmtpHelpResult {
+        guard let response = try await help(argument) else {
+            throw SessionError.timeout
+        }
+        return SmtpHelpResult(response: response)
     }
 
     public func mailFrom(_ address: String) async throws -> SmtpResponse? {

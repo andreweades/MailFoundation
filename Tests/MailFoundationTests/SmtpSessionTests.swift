@@ -39,6 +39,32 @@ func syncSmtpSessionPipelined() throws {
     #expect(sent[2] == "RCPT TO:<eve@example.com>\r\n")
 }
 
+@Test("Sync SMTP session VRFY/EXPN/HELP parsing")
+func syncSmtpSessionAddressParsing() throws {
+    let transport = TestTransport(incoming: [
+        Array("220 Ready\r\n".utf8),
+        Array("250-User <user@example.com>\r\n250 <other@example.com>\r\n".utf8),
+        Array("250-List: <list@example.com>\r\n250 <member@example.com>\r\n".utf8),
+        Array("214-Commands:\r\n214 VRFY EXPN HELP\r\n".utf8)
+    ])
+    let session = SmtpSession(transport: transport, maxReads: 3)
+    _ = try session.connect()
+
+    let vrfy = try session.vrfyResult("user")
+    let vrfyAddresses = vrfy.mailboxes.map(\.address)
+    #expect(vrfyAddresses.contains("user@example.com"))
+    #expect(vrfyAddresses.contains("other@example.com"))
+
+    let expn = try session.expnResult("list")
+    let expnAddresses = expn.mailboxes.map(\.address)
+    #expect(expnAddresses.contains("list@example.com"))
+    #expect(expnAddresses.contains("member@example.com"))
+
+    let help = try session.helpResult()
+    #expect(help.lines.count == 2)
+    #expect(help.text.contains("VRFY"))
+}
+
 @available(macOS 10.15, iOS 13.0, *)
 @Test("Async SMTP session BDAT chunk")
 func asyncSmtpSessionBdatChunk() async throws {
@@ -84,4 +110,35 @@ func asyncSmtpSessionPipelined() async throws {
     #expect(response.code == 250)
     let sent = await transport.sentSnapshot()
     #expect(String(decoding: sent.first ?? [], as: UTF8.self) == "MAIL FROM:<alice@example.com>\r\n")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async SMTP session VRFY/EXPN/HELP parsing")
+func asyncSmtpSessionAddressParsing() async throws {
+    let transport = AsyncStreamTransport()
+    let session = AsyncSmtpSession(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("220 Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let vrfyTask = Task { try await session.vrfyResult("user") }
+    await transport.yieldIncoming(Array("250-User <user@example.com>\r\n250 <other@example.com>\r\n".utf8))
+    let vrfy = try await vrfyTask.value
+    let vrfyAddresses = vrfy.mailboxes.map(\.address)
+    #expect(vrfyAddresses.contains("user@example.com"))
+    #expect(vrfyAddresses.contains("other@example.com"))
+
+    let expnTask = Task { try await session.expnResult("list") }
+    await transport.yieldIncoming(Array("250-List: <list@example.com>\r\n250 <member@example.com>\r\n".utf8))
+    let expn = try await expnTask.value
+    let expnAddresses = expn.mailboxes.map(\.address)
+    #expect(expnAddresses.contains("list@example.com"))
+    #expect(expnAddresses.contains("member@example.com"))
+
+    let helpTask = Task { try await session.helpResult() }
+    await transport.yieldIncoming(Array("214-Commands:\r\n214 VRFY EXPN HELP\r\n".utf8))
+    let help = try await helpTask.value
+    #expect(help.lines.count == 2)
+    #expect(help.text.contains("VRFY"))
 }

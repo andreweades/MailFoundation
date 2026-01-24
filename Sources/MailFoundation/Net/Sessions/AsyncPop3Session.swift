@@ -132,6 +132,13 @@ public actor AsyncPop3Session {
         throw SessionError.timeout
     }
 
+    public func retrData(_ index: Int) async throws -> Pop3MessageData {
+        try await ensureAuthenticated()
+        _ = try await client.send(.retr(index))
+        let (response, data) = try await waitForMultilineDataResponse()
+        return Pop3MessageData(response: response, data: data)
+    }
+
     public func retrRaw(_ index: Int) async throws -> [UInt8] {
         try await ensureAuthenticated()
         _ = try await client.send(.retr(index))
@@ -162,6 +169,13 @@ public actor AsyncPop3Session {
             throw SessionError.pop3Error(message: response.message)
         }
         throw SessionError.timeout
+    }
+
+    public func topData(_ index: Int, lines: Int) async throws -> Pop3MessageData {
+        try await ensureAuthenticated()
+        _ = try await client.send(.top(index, lines: lines))
+        let (response, data) = try await waitForMultilineDataResponse()
+        return Pop3MessageData(response: response, data: data)
     }
 
     public func topRaw(_ index: Int, lines: Int) async throws -> [UInt8] {
@@ -279,7 +293,7 @@ public actor AsyncPop3Session {
         throw SessionError.timeout
     }
 
-    private func waitForMultilineData(maxEmptyReads: Int = 10) async throws -> [UInt8] {
+    private func waitForMultilineDataResponse(maxEmptyReads: Int = 10) async throws -> (Pop3Response, [UInt8]) {
         var decoder = Pop3MultilineByteDecoder()
         decoder.expectMultiline()
         var emptyReads = 0
@@ -298,11 +312,16 @@ public actor AsyncPop3Session {
                     guard response.isSuccess else {
                         throw SessionError.pop3Error(message: response.message)
                     }
-                    return data
+                    return (response, data)
                 }
             }
         }
         throw SessionError.timeout
+    }
+
+    private func waitForMultilineData(maxEmptyReads: Int = 10) async throws -> [UInt8] {
+        let (_, data) = try await waitForMultilineDataResponse(maxEmptyReads: maxEmptyReads)
+        return data
     }
 
     private func streamMultilineData(
