@@ -1058,7 +1058,7 @@ func fetchRequestSerialization() {
     #expect(request.imapItemList == "(FLAGS INTERNALDATE RFC822.SIZE UID)")
 
     let headerRequest = FetchRequest(items: [.headers, .references], headers: ["Subject"])
-    #expect(headerRequest.imapItemList == "BODY.PEEK[HEADER.FIELDS (Subject REFERENCES)]")
+    #expect(headerRequest.imapItemList == "BODY.PEEK[HEADER.FIELDS (SUBJECT REFERENCES)]")
 
     let previewRequest = FetchRequest(items: [.previewText])
     #expect(previewRequest.imapItemList(previewFallback: ImapFetchPartial(start: 0, length: 64)) == "BODY.PEEK[TEXT]<0.64>")

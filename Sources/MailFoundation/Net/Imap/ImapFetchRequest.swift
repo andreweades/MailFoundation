@@ -9,10 +9,10 @@ import SwiftMimeKit
 
 public struct FetchRequest: Sendable, Equatable {
     public var items: MessageSummaryItems
-    public var headers: [String]?
+    public var headers: HeaderSet?
     public var changedSince: UInt64?
 
-    public init(items: MessageSummaryItems = .none, headers: [String]? = nil, changedSince: UInt64? = nil) {
+    public init(items: MessageSummaryItems = .none, headers: HeaderSet? = nil, changedSince: UInt64? = nil) {
         self.items = items
         self.headers = headers
         self.changedSince = changedSince
@@ -20,7 +20,13 @@ public struct FetchRequest: Sendable, Equatable {
 
     public init(items: MessageSummaryItems = .none, headers: [HeaderId], changedSince: UInt64? = nil) {
         self.items = items
-        self.headers = headers.map { $0.headerName }.filter { !$0.isEmpty }
+        self.headers = HeaderSet(headers: headers)
+        self.changedSince = changedSince
+    }
+
+    public init(items: MessageSummaryItems = .none, headers: [String], changedSince: UInt64? = nil) {
+        self.items = items
+        self.headers = HeaderSet(headers: headers)
         self.changedSince = changedSince
     }
 
@@ -42,22 +48,32 @@ public struct FetchRequest: Sendable, Equatable {
         return "(\(tokens.joined(separator: " ")))"
     }
 
-    private func headerFetchToken(headers: [String]?, requestHeaders: Bool, requestReferences: Bool) -> String? {
+    private func headerFetchToken(headers: HeaderSet?, requestHeaders: Bool, requestReferences: Bool) -> String? {
         if let headers {
-            let trimmed = headers.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-            var normalized = trimmed
-            if requestReferences {
-                let hasReferences = normalized.contains { $0.uppercased() == "REFERENCES" }
-                if !hasReferences {
-                    normalized.append("REFERENCES")
-                }
+            if isEmptyExclude(headers: headers, requestReferences: requestReferences) {
+                return "BODY.PEEK[HEADER]"
             }
 
-            if normalized.isEmpty {
+            if headers.exclude {
+                var fieldList = headers.orderedHeaders
+                if requestReferences {
+                    fieldList.removeAll { $0 == "REFERENCES" }
+                }
+                if fieldList.isEmpty {
+                    return "BODY.PEEK[HEADER]"
+                }
+                return "BODY.PEEK[HEADER.FIELDS.NOT (\(fieldList.joined(separator: " ")))]"
+            }
+
+            var fieldList = headers.orderedHeaders
+            if requestReferences, !headers.contains("REFERENCES") {
+                fieldList.append("REFERENCES")
+            }
+            if fieldList.isEmpty {
                 return requestHeaders ? "BODY.PEEK[HEADER]" : nil
             }
 
-            return "BODY.PEEK[HEADER.FIELDS (\(normalized.joined(separator: " ")))]"
+            return "BODY.PEEK[HEADER.FIELDS (\(fieldList.joined(separator: " ")))]"
         }
 
         if requestHeaders {
@@ -69,6 +85,15 @@ public struct FetchRequest: Sendable, Equatable {
         }
 
         return nil
+    }
+
+    private func isEmptyExclude(headers: HeaderSet, requestReferences: Bool) -> Bool {
+        if !headers.exclude { return false }
+        if headers.count == 0 { return true }
+        if headers.count == 1, requestReferences, headers.contains("REFERENCES") {
+            return true
+        }
+        return false
     }
 }
 
