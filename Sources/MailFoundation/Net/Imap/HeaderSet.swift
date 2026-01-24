@@ -44,17 +44,19 @@ public struct HeaderSet: Sendable, Equatable, Sequence {
     public init(headers: [HeaderId], exclude: Bool = false, isReadOnly: Bool = false) {
         self.storage = []
         self.ordered = []
-        self.readOnly = isReadOnly
+        self.readOnly = false
         self.excludeStorage = exclude
         addRange(headers)
+        self.readOnly = isReadOnly
     }
 
     public init(headers: [String], exclude: Bool = false, isReadOnly: Bool = false) {
         self.storage = []
         self.ordered = []
-        self.readOnly = isReadOnly
+        self.readOnly = false
         self.excludeStorage = exclude
         addRange(headers)
+        self.readOnly = isReadOnly
     }
 
     private init(exclude: Bool, isReadOnly: Bool) {
@@ -140,6 +142,10 @@ public struct HeaderSet: Sendable, Equatable, Sequence {
 
     public var orderedHeaders: [String] {
         ordered
+    }
+
+    public static func isValidFieldName(_ header: String) -> Bool {
+        isValid(header)
     }
 
     private mutating func insert(_ header: String) {
