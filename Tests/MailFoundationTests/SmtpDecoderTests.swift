@@ -28,3 +28,23 @@ func smtpResponseDecoderLeadingSpaces() {
     #expect(responses.count == 1)
     #expect(responses.first?.lines == [" ", " OK"])
 }
+
+@Test("SMTP response decoder accepts mixed reply codes")
+func smtpResponseDecoderMixedReplyCodes() {
+    var decoder = SmtpResponseDecoder()
+    let bytes = Array("250-PIPELINING\r\n251 HELP\r\n".utf8)
+    let responses = decoder.append(bytes)
+    #expect(responses.count == 1)
+    #expect(responses.first?.code == 250)
+    #expect(responses.first?.lines == ["PIPELINING", "HELP"])
+}
+
+@Test("SMTP response decoder skips malformed lines")
+func smtpResponseDecoderSkipsMalformedLines() {
+    var decoder = SmtpResponseDecoder()
+    let bytes = Array("250-PIPELINING\r\n25X bad\r\n250 OK\r\n".utf8)
+    let responses = decoder.append(bytes)
+    #expect(responses.count == 1)
+    #expect(responses.first?.code == 250)
+    #expect(responses.first?.lines == ["PIPELINING", "OK"])
+}
