@@ -121,7 +121,31 @@ public final class Pop3Folder: MailFolderBase {
         try session.retr(index)
     }
 
+    public func retrData(_ index: Int) throws -> Pop3MessageData {
+        try session.retrData(index)
+    }
+
+    public func retrRaw(_ index: Int) throws -> [UInt8] {
+        try session.retrRaw(index)
+    }
+
+    public func retrStream(_ index: Int, sink: ([UInt8]) throws -> Void) throws {
+        try session.retrStream(index, sink: sink)
+    }
+
     public func top(_ index: Int, lines: Int) throws -> [String] {
         try session.top(index, lines: lines)
+    }
+
+    public func topData(_ index: Int, lines: Int) throws -> Pop3MessageData {
+        try session.topData(index, lines: lines)
+    }
+
+    public func topRaw(_ index: Int, lines: Int) throws -> [UInt8] {
+        try session.topRaw(index, lines: lines)
+    }
+
+    public func topStream(_ index: Int, lines: Int, sink: ([UInt8]) throws -> Void) throws {
+        try session.topStream(index, lines: lines, sink: sink)
     }
 }

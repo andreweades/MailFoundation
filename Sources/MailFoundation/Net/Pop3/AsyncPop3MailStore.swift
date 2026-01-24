@@ -152,7 +152,38 @@ public actor AsyncPop3Folder: AsyncMailFolder {
         try await session.retr(index)
     }
 
+    public func retrData(_ index: Int) async throws -> Pop3MessageData {
+        try await session.retrData(index)
+    }
+
+    public func retrRaw(_ index: Int) async throws -> [UInt8] {
+        try await session.retrRaw(index)
+    }
+
+    public func retrStream(
+        _ index: Int,
+        sink: @Sendable ([UInt8]) async throws -> Void
+    ) async throws {
+        try await session.retrStream(index, sink: sink)
+    }
+
     public func top(_ index: Int, lines: Int) async throws -> [String] {
         try await session.top(index, lines: lines)
+    }
+
+    public func topData(_ index: Int, lines: Int) async throws -> Pop3MessageData {
+        try await session.topData(index, lines: lines)
+    }
+
+    public func topRaw(_ index: Int, lines: Int) async throws -> [UInt8] {
+        try await session.topRaw(index, lines: lines)
+    }
+
+    public func topStream(
+        _ index: Int,
+        lines: Int,
+        sink: @Sendable ([UInt8]) async throws -> Void
+    ) async throws {
+        try await session.topStream(index, lines: lines, sink: sink)
     }
 }
