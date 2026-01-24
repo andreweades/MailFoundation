@@ -8,6 +8,14 @@ public struct SmtpResponse: Sendable {
     public let code: Int
     public let lines: [String]
 
+    public var statusCode: SmtpStatusCode {
+        SmtpStatusCode(rawValue: code)
+    }
+
+    public var response: String {
+        lines.joined(separator: "\n")
+    }
+
     public var isSuccess: Bool {
         code >= 200 && code < 400
     }

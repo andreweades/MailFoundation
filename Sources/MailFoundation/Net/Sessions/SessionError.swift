@@ -14,3 +14,14 @@ public enum SessionError: Error, Sendable, Equatable {
     case pop3Error(message: String)
     case imapError(status: ImapResponseStatus?, text: String)
 }
+
+public extension SessionError {
+    var smtpStatusCode: SmtpStatusCode? {
+        switch self {
+        case let .smtpError(code, _, _):
+            return SmtpStatusCode(rawValue: code)
+        default:
+            return nil
+        }
+    }
+}
