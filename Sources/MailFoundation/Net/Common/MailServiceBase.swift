@@ -5,6 +5,7 @@
 //
 
 import Foundation
+import SwiftMimeKit
 #if canImport(Security)
 @preconcurrency import Security
 #endif
@@ -140,9 +141,11 @@ open class MailServiceBase<Response>: MailService {
 
 open class MailTransportBase<Response>: MailServiceBase<Response> {
     public struct MessageSentEvent: Sendable {
+        public let message: MimeMessage
         public let response: String
 
-        public init(response: String) {
+        public init(message: MimeMessage, response: String) {
+            self.message = message
             self.response = response
         }
     }
@@ -159,8 +162,8 @@ open class MailTransportBase<Response>: MailServiceBase<Response> {
         messageSentHandlers.removeAll()
     }
 
-    public func notifyMessageSent(response: String) {
-        let event = MessageSentEvent(response: response)
+    public func notifyMessageSent(message: MimeMessage, response: String) {
+        let event = MessageSentEvent(message: message, response: response)
         for handler in messageSentHandlers {
             handler(event)
         }

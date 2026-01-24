@@ -12,6 +12,14 @@ public enum MailTransportError: Error, Sendable, Equatable {
     case missingRecipients
 }
 
+public enum MailTransportFormatOptions {
+    public static var `default`: FormatOptions {
+        var options = FormatOptions.default
+        options.newLineFormat = .dos
+        return options
+    }
+}
+
 public struct MailTransportEnvelope {
     public let sender: MailboxAddress
     public let recipients: [MailboxAddress]
@@ -27,7 +35,7 @@ public struct MailTransportEnvelope {
 public enum MailTransportEnvelopeBuilder {
     public static func build(
         for message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) throws -> MailTransportEnvelope {
         let sender = try resolveSender(for: message)
@@ -84,7 +92,7 @@ public enum MailTransportEnvelopeBuilder {
 
     public static func encodeMessage(
         _ message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) throws -> [UInt8] {
         let stream = MemoryStream()
@@ -102,7 +110,7 @@ public enum MailTransportEnvelopeBuilder {
 public extension MailTransportBase {
     func prepareEnvelope(
         for message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) throws -> (from: MailboxAddress, recipients: [MailboxAddress], data: [UInt8]) {
         let sender = try MailTransportEnvelopeBuilder.resolveSender(for: message)
@@ -121,7 +129,7 @@ public extension MailTransportBase {
 
     func encodeMessage(
         _ message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) throws -> [UInt8] {
         try MailTransportEnvelopeBuilder.encodeMessage(message, options: options, progress: progress)
@@ -131,7 +139,7 @@ public extension MailTransportBase {
 public extension MessageTransport {
     func sendMessage(
         _ message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) throws {
         let envelope = try MailTransportEnvelopeBuilder.build(for: message, options: options, progress: progress)
@@ -141,13 +149,28 @@ public extension MessageTransport {
             data: envelope.data
         )
     }
+
+    func sendMessage(
+        _ message: MimeMessage,
+        sender: MailboxAddress,
+        recipients: [MailboxAddress],
+        options: FormatOptions = MailTransportFormatOptions.default,
+        progress: TransferProgress? = nil
+    ) throws {
+        let data = try MailTransportEnvelopeBuilder.encodeMessage(message, options: options, progress: progress)
+        try sendMessage(
+            from: sender.address,
+            to: recipients.map { $0.address },
+            data: data
+        )
+    }
 }
 
 @available(macOS 10.15, iOS 13.0, *)
 public extension AsyncMessageTransport {
     func sendMessage(
         _ message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) async throws {
         let envelope = try MailTransportEnvelopeBuilder.build(for: message, options: options, progress: progress)
@@ -155,6 +178,21 @@ public extension AsyncMessageTransport {
             from: envelope.sender.address,
             to: envelope.recipients.map { $0.address },
             data: envelope.data
+        )
+    }
+
+    func sendMessage(
+        _ message: MimeMessage,
+        sender: MailboxAddress,
+        recipients: [MailboxAddress],
+        options: FormatOptions = MailTransportFormatOptions.default,
+        progress: TransferProgress? = nil
+    ) async throws {
+        let data = try MailTransportEnvelopeBuilder.encodeMessage(message, options: options, progress: progress)
+        try await sendMessage(
+            from: sender.address,
+            to: recipients.map { $0.address },
+            data: data
         )
     }
 }

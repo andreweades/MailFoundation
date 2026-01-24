@@ -87,7 +87,7 @@ public final class SmtpTransport: MailTransportBase<SmtpResponse>, MailTransport
 
     public func send(
         _ message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) throws -> SmtpResponse {
         let envelope = try MailTransportEnvelopeBuilder.build(for: message, options: options, progress: progress)
@@ -99,7 +99,7 @@ public final class SmtpTransport: MailTransportBase<SmtpResponse>, MailTransport
             mailParameters: mailParameters,
             rcptParameters: nil
         )
-        notifyMessageSent(response: response.lines.joined(separator: " "))
+        notifyMessageSent(message: message, response: response.lines.joined(separator: " "))
         return response
     }
 
@@ -107,7 +107,7 @@ public final class SmtpTransport: MailTransportBase<SmtpResponse>, MailTransport
         _ message: MimeMessage,
         sender: MailboxAddress,
         recipients: [MailboxAddress],
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) throws -> SmtpResponse {
         let data = try MailTransportEnvelopeBuilder.encodeMessage(message, options: options, progress: progress)
@@ -119,14 +119,14 @@ public final class SmtpTransport: MailTransportBase<SmtpResponse>, MailTransport
             mailParameters: mailParameters,
             rcptParameters: nil
         )
-        notifyMessageSent(response: response.lines.joined(separator: " "))
+        notifyMessageSent(message: message, response: response.lines.joined(separator: " "))
         return response
     }
 
     public func sendChunked(
         _ message: MimeMessage,
         chunkSize: Int = 4096,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil,
         mailParameters: SmtpMailFromParameters? = nil,
         rcptParameters: SmtpRcptToParameters? = nil
@@ -152,13 +152,13 @@ public final class SmtpTransport: MailTransportBase<SmtpResponse>, MailTransport
                 rcptParameters: rcptParameters
             )
         }
-        notifyMessageSent(response: response.lines.joined(separator: " "))
+        notifyMessageSent(message: message, response: response.lines.joined(separator: " "))
         return response
     }
 
     public func sendPipelined(
         _ message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil,
         mailParameters: SmtpMailFromParameters? = nil,
         rcptParameters: SmtpRcptToParameters? = nil
@@ -183,7 +183,7 @@ public final class SmtpTransport: MailTransportBase<SmtpResponse>, MailTransport
                 rcptParameters: rcptParameters
             )
         }
-        notifyMessageSent(response: response.lines.joined(separator: " "))
+        notifyMessageSent(message: message, response: response.lines.joined(separator: " "))
         return response
     }
 

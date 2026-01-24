@@ -85,7 +85,7 @@ public actor AsyncSmtpTransport: AsyncMailTransport {
 
     public func send(
         _ message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) async throws -> SmtpResponse {
         let envelope = try MailTransportEnvelopeBuilder.build(for: message, options: options, progress: progress)
@@ -103,7 +103,7 @@ public actor AsyncSmtpTransport: AsyncMailTransport {
         _ message: MimeMessage,
         sender: MailboxAddress,
         recipients: [MailboxAddress],
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil
     ) async throws -> SmtpResponse {
         let data = try MailTransportEnvelopeBuilder.encodeMessage(message, options: options, progress: progress)
@@ -120,7 +120,7 @@ public actor AsyncSmtpTransport: AsyncMailTransport {
     public func sendChunked(
         _ message: MimeMessage,
         chunkSize: Int = 4096,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil,
         mailParameters: SmtpMailFromParameters? = nil,
         rcptParameters: SmtpRcptToParameters? = nil
@@ -148,7 +148,7 @@ public actor AsyncSmtpTransport: AsyncMailTransport {
 
     public func sendPipelined(
         _ message: MimeMessage,
-        options: FormatOptions = .default,
+        options: FormatOptions = MailTransportFormatOptions.default,
         progress: TransferProgress? = nil,
         mailParameters: SmtpMailFromParameters? = nil,
         rcptParameters: SmtpRcptToParameters? = nil
