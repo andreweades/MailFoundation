@@ -385,10 +385,10 @@ public final class ImapSession {
             }
 
             for message in messages {
-                if let line = message.line as String? {
-                    if let search = ImapSearchResponse.parse(line) {
-                        ids = search.ids
-                    }
+                if let esearch = ImapESearchResponse.parse(message.line) {
+                    ids = esearch.ids
+                } else if let search = ImapSearchResponse.parse(message.line) {
+                    ids = search.ids
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                     guard response.isOk else {
@@ -408,6 +408,7 @@ public final class ImapSession {
 
     public func sort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {
         try ensureSelected()
+        try ImapSort.validateCapabilities(orderBy: orderBy, capabilities: client.capabilities)
         let kind = try ImapCommandKind.sort(query, orderBy: orderBy, charset: charset)
         let command = client.send(kind)
         try ensureWrite()
@@ -422,7 +423,9 @@ public final class ImapSession {
             }
 
             for message in messages {
-                if let search = ImapSearchResponse.parse(message.line) {
+                if let esearch = ImapESearchResponse.parse(message.line) {
+                    ids = esearch.ids
+                } else if let search = ImapSearchResponse.parse(message.line) {
                     ids = search.ids
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -452,7 +455,9 @@ public final class ImapSession {
             }
 
             for message in messages {
-                if let search = ImapSearchResponse.parse(message.line) {
+                if let esearch = ImapESearchResponse.parse(message.line) {
+                    ids = esearch.ids
+                } else if let search = ImapSearchResponse.parse(message.line) {
                     ids = search.ids
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -473,6 +478,7 @@ public final class ImapSession {
 
     public func uidSort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {
         try ensureSelected()
+        try ImapSort.validateCapabilities(orderBy: orderBy, capabilities: client.capabilities)
         let kind = try ImapCommandKind.uidSort(query, orderBy: orderBy, charset: charset)
         let command = client.send(kind)
         try ensureWrite()
@@ -487,7 +493,9 @@ public final class ImapSession {
             }
 
             for message in messages {
-                if let search = ImapSearchResponse.parse(message.line) {
+                if let esearch = ImapESearchResponse.parse(message.line) {
+                    ids = esearch.ids
+                } else if let search = ImapSearchResponse.parse(message.line) {
                     ids = search.ids
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {

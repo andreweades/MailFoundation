@@ -253,6 +253,40 @@ public actor AsyncImapFolder: AsyncMailFolder {
         try await session.status(mailbox: mailbox.name, items: items, maxEmptyReads: maxEmptyReads)
     }
 
+    public func search(_ criteria: String, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
+        try await session.search(criteria, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func search(_ query: SearchQuery, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
+        try await session.search(query, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSearch(_ criteria: String, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
+        try await session.uidSearch(criteria, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSearch(_ query: SearchQuery, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
+        try await session.uidSearch(query, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func sort(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchResponse {
+        try await session.sort(orderBy, query: query, charset: charset, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSort(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchResponse {
+        try await session.uidSort(orderBy, query: query, charset: charset, maxEmptyReads: maxEmptyReads)
+    }
+
     public func fetchSummaries(_ set: String, request: FetchRequest, previewLength: Int = 512) async throws -> [MessageSummary] {
         try await session.fetchSummaries(set, request: request, previewLength: previewLength)
     }

@@ -339,12 +339,10 @@ public final class Envelope {
         if let domain = domainResult.value {
             let user = userResult.value ?? ""
             let address = (domain == "localhost") ? user : "\(user)@\(domain)"
-            if let routeText = routeResult.value {
-                var route: DomainList?
-                if DomainList.tryParse(routeText, route: &route), let route {
-                    let mailbox = MailboxAddress(name: nameResult.value, route: Array(route), address: address)
-                    return (true, mailbox)
-                }
+            if let routeText = routeResult.value,
+               let route = try? DomainList(parsing: routeText) {
+                let mailbox = MailboxAddress(name: nameResult.value, route: Array(route), address: address)
+                return (true, mailbox)
             }
             return (true, MailboxAddress(name: nameResult.value, address: address))
         }

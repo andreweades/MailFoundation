@@ -217,6 +217,30 @@ public final class ImapFolder: MailFolderBase {
         try session.status(mailbox: mailbox.name, items: items)
     }
 
+    public func search(_ criteria: String) throws -> ImapSearchResponse {
+        try session.search(criteria)
+    }
+
+    public func search(_ query: SearchQuery) throws -> ImapSearchResponse {
+        try session.search(query)
+    }
+
+    public func uidSearch(_ criteria: String) throws -> ImapSearchResponse {
+        try session.uidSearch(criteria)
+    }
+
+    public func uidSearch(_ query: SearchQuery) throws -> ImapSearchResponse {
+        try session.uidSearch(query)
+    }
+
+    public func sort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {
+        try session.sort(orderBy, query: query, charset: charset)
+    }
+
+    public func uidSort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {
+        try session.uidSort(orderBy, query: query, charset: charset)
+    }
+
     public func fetchSummaries(_ set: String, request: FetchRequest, previewLength: Int = 512) throws -> [MessageSummary] {
         try session.fetchSummaries(set, request: request, previewLength: previewLength)
     }
