@@ -6,6 +6,32 @@
 
 public struct ImapSearchResponse: Sendable, Equatable {
     public let ids: [UInt32]
+    public let count: Int?
+    public let min: UInt32?
+    public let max: UInt32?
+    public let isUid: Bool
+
+    public init(
+        ids: [UInt32],
+        count: Int? = nil,
+        min: UInt32? = nil,
+        max: UInt32? = nil,
+        isUid: Bool = false
+    ) {
+        self.ids = ids
+        self.count = count
+        self.min = min
+        self.max = max
+        self.isUid = isUid
+    }
+
+    public init(esearch: ImapESearchResponse, defaultIsUid: Bool = false) {
+        self.ids = esearch.ids
+        self.count = esearch.count
+        self.min = esearch.min
+        self.max = esearch.max
+        self.isUid = esearch.isUid || defaultIsUid
+    }
 
     public static func parse(_ line: String) -> ImapSearchResponse? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)

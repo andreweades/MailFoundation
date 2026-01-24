@@ -434,7 +434,7 @@ public actor AsyncImapSession {
     public func search(_ criteria: String, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
         try await ensureSelected()
         let command = try await client.send(.search(criteria))
-        var ids: [UInt32] = []
+        var result = ImapSearchResponse(ids: [], isUid: false)
         var emptyReads = 0
 
         while emptyReads < maxEmptyReads {
@@ -446,13 +446,13 @@ public actor AsyncImapSession {
             emptyReads = 0
             for message in messages {
                 if let esearch = ImapESearchResponse.parse(message.line) {
-                    ids = esearch.ids
+                    result = ImapSearchResponse(esearch: esearch, defaultIsUid: false)
                 } else if let search = ImapSearchResponse.parse(message.line) {
-                    ids = search.ids
+                    result = ImapSearchResponse(ids: search.ids, isUid: false)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                     if response.isOk {
-                        return ImapSearchResponse(ids: ids)
+                        return result
                     }
                     throw SessionError.imapError(status: response.status, text: response.text)
                 }
@@ -476,7 +476,7 @@ public actor AsyncImapSession {
         try ImapSort.validateCapabilities(orderBy: orderBy, capabilities: await client.capabilities)
         let kind = try ImapCommandKind.sort(query, orderBy: orderBy, charset: charset)
         let command = try await client.send(kind)
-        var ids: [UInt32] = []
+        var result = ImapSearchResponse(ids: [], isUid: false)
         var emptyReads = 0
 
         while emptyReads < maxEmptyReads {
@@ -488,13 +488,13 @@ public actor AsyncImapSession {
             emptyReads = 0
             for message in messages {
                 if let esearch = ImapESearchResponse.parse(message.line) {
-                    ids = esearch.ids
+                    result = ImapSearchResponse(esearch: esearch, defaultIsUid: false)
                 } else if let search = ImapSearchResponse.parse(message.line) {
-                    ids = search.ids
+                    result = ImapSearchResponse(ids: search.ids, isUid: false)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                     if response.isOk {
-                        return ImapSearchResponse(ids: ids)
+                        return result
                     }
                     throw SessionError.imapError(status: response.status, text: response.text)
                 }
@@ -507,7 +507,7 @@ public actor AsyncImapSession {
     public func uidSearch(_ criteria: String, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
         try await ensureSelected()
         let command = try await client.send(.uidSearch(criteria))
-        var ids: [UInt32] = []
+        var result = ImapSearchResponse(ids: [], isUid: true)
         var emptyReads = 0
 
         while emptyReads < maxEmptyReads {
@@ -519,13 +519,13 @@ public actor AsyncImapSession {
             emptyReads = 0
             for message in messages {
                 if let esearch = ImapESearchResponse.parse(message.line) {
-                    ids = esearch.ids
+                    result = ImapSearchResponse(esearch: esearch, defaultIsUid: true)
                 } else if let search = ImapSearchResponse.parse(message.line) {
-                    ids = search.ids
+                    result = ImapSearchResponse(ids: search.ids, isUid: true)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                     if response.isOk {
-                        return ImapSearchResponse(ids: ids)
+                        return result
                     }
                     throw SessionError.imapError(status: response.status, text: response.text)
                 }
@@ -549,7 +549,7 @@ public actor AsyncImapSession {
         try ImapSort.validateCapabilities(orderBy: orderBy, capabilities: await client.capabilities)
         let kind = try ImapCommandKind.uidSort(query, orderBy: orderBy, charset: charset)
         let command = try await client.send(kind)
-        var ids: [UInt32] = []
+        var result = ImapSearchResponse(ids: [], isUid: true)
         var emptyReads = 0
 
         while emptyReads < maxEmptyReads {
@@ -561,13 +561,13 @@ public actor AsyncImapSession {
             emptyReads = 0
             for message in messages {
                 if let esearch = ImapESearchResponse.parse(message.line) {
-                    ids = esearch.ids
+                    result = ImapSearchResponse(esearch: esearch, defaultIsUid: true)
                 } else if let search = ImapSearchResponse.parse(message.line) {
-                    ids = search.ids
+                    result = ImapSearchResponse(ids: search.ids, isUid: true)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                     if response.isOk {
-                        return ImapSearchResponse(ids: ids)
+                        return result
                     }
                     throw SessionError.imapError(status: response.status, text: response.text)
                 }

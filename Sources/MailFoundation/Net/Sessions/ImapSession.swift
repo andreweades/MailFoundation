@@ -374,7 +374,7 @@ public final class ImapSession {
         try ensureSelected()
         let command = client.send(.search(criteria))
         try ensureWrite()
-        var ids: [UInt32] = []
+        var result = ImapSearchResponse(ids: [], isUid: false)
         var reads = 0
 
         while reads < maxReads {
@@ -386,15 +386,15 @@ public final class ImapSession {
 
             for message in messages {
                 if let esearch = ImapESearchResponse.parse(message.line) {
-                    ids = esearch.ids
+                    result = ImapSearchResponse(esearch: esearch, defaultIsUid: false)
                 } else if let search = ImapSearchResponse.parse(message.line) {
-                    ids = search.ids
+                    result = ImapSearchResponse(ids: search.ids, isUid: false)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                     guard response.isOk else {
                         throw SessionError.imapError(status: response.status, text: response.text)
                     }
-                    return ImapSearchResponse(ids: ids)
+                    return result
                 }
             }
         }
@@ -412,7 +412,7 @@ public final class ImapSession {
         let kind = try ImapCommandKind.sort(query, orderBy: orderBy, charset: charset)
         let command = client.send(kind)
         try ensureWrite()
-        var ids: [UInt32] = []
+        var result = ImapSearchResponse(ids: [], isUid: false)
         var reads = 0
 
         while reads < maxReads {
@@ -424,15 +424,15 @@ public final class ImapSession {
 
             for message in messages {
                 if let esearch = ImapESearchResponse.parse(message.line) {
-                    ids = esearch.ids
+                    result = ImapSearchResponse(esearch: esearch, defaultIsUid: false)
                 } else if let search = ImapSearchResponse.parse(message.line) {
-                    ids = search.ids
+                    result = ImapSearchResponse(ids: search.ids, isUid: false)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                     guard response.isOk else {
                         throw SessionError.imapError(status: response.status, text: response.text)
                     }
-                    return ImapSearchResponse(ids: ids)
+                    return result
                 }
             }
         }
@@ -444,7 +444,7 @@ public final class ImapSession {
         try ensureSelected()
         let command = client.send(.uidSearch(criteria))
         try ensureWrite()
-        var ids: [UInt32] = []
+        var result = ImapSearchResponse(ids: [], isUid: true)
         var reads = 0
 
         while reads < maxReads {
@@ -456,15 +456,15 @@ public final class ImapSession {
 
             for message in messages {
                 if let esearch = ImapESearchResponse.parse(message.line) {
-                    ids = esearch.ids
+                    result = ImapSearchResponse(esearch: esearch, defaultIsUid: true)
                 } else if let search = ImapSearchResponse.parse(message.line) {
-                    ids = search.ids
+                    result = ImapSearchResponse(ids: search.ids, isUid: true)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                     guard response.isOk else {
                         throw SessionError.imapError(status: response.status, text: response.text)
                     }
-                    return ImapSearchResponse(ids: ids)
+                    return result
                 }
             }
         }
@@ -482,7 +482,7 @@ public final class ImapSession {
         let kind = try ImapCommandKind.uidSort(query, orderBy: orderBy, charset: charset)
         let command = client.send(kind)
         try ensureWrite()
-        var ids: [UInt32] = []
+        var result = ImapSearchResponse(ids: [], isUid: true)
         var reads = 0
 
         while reads < maxReads {
@@ -494,15 +494,15 @@ public final class ImapSession {
 
             for message in messages {
                 if let esearch = ImapESearchResponse.parse(message.line) {
-                    ids = esearch.ids
+                    result = ImapSearchResponse(esearch: esearch, defaultIsUid: true)
                 } else if let search = ImapSearchResponse.parse(message.line) {
-                    ids = search.ids
+                    result = ImapSearchResponse(ids: search.ids, isUid: true)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                     guard response.isOk else {
                         throw SessionError.imapError(status: response.status, text: response.text)
                     }
-                    return ImapSearchResponse(ids: ids)
+                    return result
                 }
             }
         }
