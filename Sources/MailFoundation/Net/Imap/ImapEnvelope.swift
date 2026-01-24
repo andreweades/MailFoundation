@@ -5,7 +5,7 @@
 //
 
 import Foundation
-import SwiftMimeKit
+import MimeFoundation
 
 public struct ImapEnvelope: Sendable, Equatable {
     public let date: Date?

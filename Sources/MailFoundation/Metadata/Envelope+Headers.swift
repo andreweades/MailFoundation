@@ -5,7 +5,7 @@
 //
 
 import Foundation
-import SwiftMimeKit
+import MimeFoundation
 
 public extension Envelope {
     convenience init(headers: HeaderList) {

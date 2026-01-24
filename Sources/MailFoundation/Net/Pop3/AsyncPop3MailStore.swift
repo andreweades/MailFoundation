@@ -4,7 +4,7 @@
 // Async POP3 mail store and inbox folder wrapper.
 //
 
-import SwiftMimeKit
+import MimeFoundation
 
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncPop3MailStore: AsyncMailStore {

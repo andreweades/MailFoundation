@@ -1,10 +1,10 @@
 //
 // SubjectDecoder.swift
 //
-// RFC 2047 subject decoding helper using SwiftMimeKit.
+// RFC 2047 subject decoding helper using MimeFoundation.
 //
 
-import SwiftMimeKit
+import MimeFoundation
 
 public enum SubjectDecoder {
     public static func decode(_ rawValue: String) -> String {

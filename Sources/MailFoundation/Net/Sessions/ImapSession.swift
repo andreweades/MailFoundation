@@ -406,6 +406,37 @@ public final class ImapSession {
         try search(query.serialize())
     }
 
+    public func sort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {
+        try ensureSelected()
+        let kind = try ImapCommandKind.sort(query, orderBy: orderBy, charset: charset)
+        let command = client.send(kind)
+        try ensureWrite()
+        var ids: [UInt32] = []
+        var reads = 0
+
+        while reads < maxReads {
+            let messages = client.receiveWithLiterals()
+            if messages.isEmpty {
+                reads += 1
+                continue
+            }
+
+            for message in messages {
+                if let search = ImapSearchResponse.parse(message.line) {
+                    ids = search.ids
+                }
+                if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                    guard response.isOk else {
+                        throw SessionError.imapError(status: response.status, text: response.text)
+                    }
+                    return ImapSearchResponse(ids: ids)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
     public func uidSearch(_ criteria: String) throws -> ImapSearchResponse {
         try ensureSelected()
         let command = client.send(.uidSearch(criteria))
@@ -438,6 +469,37 @@ public final class ImapSession {
 
     public func uidSearch(_ query: SearchQuery) throws -> ImapSearchResponse {
         try uidSearch(query.serialize())
+    }
+
+    public func uidSort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {
+        try ensureSelected()
+        let kind = try ImapCommandKind.uidSort(query, orderBy: orderBy, charset: charset)
+        let command = client.send(kind)
+        try ensureWrite()
+        var ids: [UInt32] = []
+        var reads = 0
+
+        while reads < maxReads {
+            let messages = client.receiveWithLiterals()
+            if messages.isEmpty {
+                reads += 1
+                continue
+            }
+
+            for message in messages {
+                if let search = ImapSearchResponse.parse(message.line) {
+                    ids = search.ids
+                }
+                if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                    guard response.isOk else {
+                        throw SessionError.imapError(status: response.status, text: response.text)
+                    }
+                    return ImapSearchResponse(ids: ids)
+                }
+            }
+        }
+
+        throw SessionError.timeout
     }
 
     public func fetch(_ set: String, items: String) throws -> [ImapFetchResponse] {

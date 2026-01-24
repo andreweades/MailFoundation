@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 @testable import MailFoundation
-import SwiftMimeKit
+import MimeFoundation
 
 @Test("UniqueId basics")
 func uniqueIdBasics() {
@@ -665,8 +665,8 @@ func envelopeApplyHeaders() {
     #expect(envelope.receivedSpf.first == "pass")
 }
 
-@Test("Envelope apply SwiftMimeKit headers")
-func envelopeApplySwiftMimeKitHeaders() {
+@Test("Envelope apply MimeFoundation headers")
+func envelopeApplyMimeFoundationHeaders() {
     let headers = [
         Header(field: "Subject", value: "=?UTF-8?B?SGVsbG8=?="),
         Header(field: "From", value: "Alice <alice@example.com>")

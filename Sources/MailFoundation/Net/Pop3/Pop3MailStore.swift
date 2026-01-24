@@ -4,7 +4,7 @@
 // POP3 mail store and inbox folder wrapper.
 //
 
-import SwiftMimeKit
+import MimeFoundation
 
 public enum Pop3FolderError: Error, Sendable {
     case unsupportedFolder

@@ -4,7 +4,7 @@
 // MailTransport-based SMTP wrapper.
 //
 
-import SwiftMimeKit
+import MimeFoundation
 
 public final class SmtpTransport: MailTransportBase<SmtpResponse>, MailTransport {
     private let session: SmtpSession

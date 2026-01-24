@@ -13,7 +13,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(path: "../a/SwiftMimeKit")
+        .package(path: "../a/MimeFoundation")
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -21,7 +21,7 @@ let package = Package(
         .target(
             name: "MailFoundation",
             dependencies: [
-                "SwiftMimeKit"
+                "MimeFoundation"
             ]
         ),
         .testTarget(

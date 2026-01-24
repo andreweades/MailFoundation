@@ -1,5 +1,5 @@
 import Testing
-import SwiftMimeKit
+import MimeFoundation
 @testable import MailFoundation
 
 @Test("Envelope list-id normalization")

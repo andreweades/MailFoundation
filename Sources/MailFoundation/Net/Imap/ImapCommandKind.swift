@@ -26,9 +26,11 @@ public enum ImapCommandKind: Sendable {
     case fetch(String, String)
     case store(String, String)
     case search(String)
+    case sort(String)
     case uidFetch(String, String)
     case uidStore(String, String)
     case uidSearch(String)
+    case uidSort(String)
     case enable([String])
     case idle
     case idleDone
@@ -82,12 +84,16 @@ public enum ImapCommandKind: Sendable {
             return ImapCommand(tag: tag, name: "STORE", arguments: "\(set) \(data)")
         case let .search(criteria):
             return ImapCommand(tag: tag, name: "SEARCH", arguments: criteria)
+        case let .sort(criteria):
+            return ImapCommand(tag: tag, name: "SORT", arguments: criteria)
         case let .uidFetch(set, items):
             return ImapCommand(tag: tag, name: "UID FETCH", arguments: "\(set) \(items)")
         case let .uidStore(set, data):
             return ImapCommand(tag: tag, name: "UID STORE", arguments: "\(set) \(data)")
         case let .uidSearch(criteria):
             return ImapCommand(tag: tag, name: "UID SEARCH", arguments: criteria)
+        case let .uidSort(criteria):
+            return ImapCommand(tag: tag, name: "UID SORT", arguments: criteria)
         case let .enable(capabilities):
             let list = capabilities.joined(separator: " ")
             return ImapCommand(tag: tag, name: "ENABLE", arguments: list)

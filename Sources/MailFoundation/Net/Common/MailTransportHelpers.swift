@@ -5,7 +5,7 @@
 //
 
 import Foundation
-import SwiftMimeKit
+import MimeFoundation
 
 public enum MailTransportError: Error, Sendable, Equatable {
     case notConnected

@@ -5,7 +5,7 @@
 //
 
 import Foundation
-import SwiftMimeKit
+import MimeFoundation
 
 public struct Pop3MessageData: Sendable, Equatable {
     public let response: Pop3Response

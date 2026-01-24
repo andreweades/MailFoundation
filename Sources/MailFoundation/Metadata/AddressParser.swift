@@ -1,10 +1,10 @@
 //
 // AddressParser.swift
 //
-// Address parsing helpers backed by SwiftMimeKit.
+// Address parsing helpers backed by MimeFoundation.
 //
 
-import SwiftMimeKit
+import MimeFoundation
 
 public enum AddressParserError: Error, Sendable {
     case noMailboxFound

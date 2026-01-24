@@ -5,7 +5,7 @@
 //
 
 import Foundation
-import SwiftMimeKit
+import MimeFoundation
 
 public struct FetchRequest: Sendable, Equatable {
     public var items: MessageSummaryItems

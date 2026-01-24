@@ -5,7 +5,7 @@
 //
 
 import Foundation
-import SwiftMimeKit
+import MimeFoundation
 #if canImport(Security)
 @preconcurrency import Security
 #endif

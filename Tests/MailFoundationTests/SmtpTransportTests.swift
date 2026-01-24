@@ -1,6 +1,6 @@
 import Testing
 @testable import MailFoundation
-import SwiftMimeKit
+import MimeFoundation
 
 @Test("SMTP transport send chunked")
 func smtpTransportSendChunked() throws {

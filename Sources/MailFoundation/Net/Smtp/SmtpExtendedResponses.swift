@@ -4,7 +4,7 @@
 // Helpers for parsing richer SMTP responses (VRFY/EXPN/HELP).
 //
 
-import SwiftMimeKit
+import MimeFoundation
 
 public struct SmtpVrfyResult: @unchecked Sendable {
     public let response: SmtpResponse

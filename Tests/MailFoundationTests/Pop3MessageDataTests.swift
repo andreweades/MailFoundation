@@ -1,5 +1,5 @@
 import Testing
-import SwiftMimeKit
+import MimeFoundation
 @testable import MailFoundation
 
 @Test("POP3 message data header parsing")

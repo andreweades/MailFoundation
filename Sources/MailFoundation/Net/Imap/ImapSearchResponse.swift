@@ -9,11 +9,18 @@ public struct ImapSearchResponse: Sendable, Equatable {
 
     public static func parse(_ line: String) -> ImapSearchResponse? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 8 else { return nil }
+        guard trimmed.count >= 6 else { return nil }
         let upper = trimmed.uppercased()
-        guard upper.hasPrefix("* SEARCH") else { return nil }
+        let prefixLength: Int
+        if upper.hasPrefix("* SEARCH") {
+            prefixLength = 8
+        } else if upper.hasPrefix("* SORT") {
+            prefixLength = 6
+        } else {
+            return nil
+        }
 
-        let startIndex = trimmed.index(trimmed.startIndex, offsetBy: 8)
+        let startIndex = trimmed.index(trimmed.startIndex, offsetBy: prefixLength)
         let remainder = trimmed[startIndex...].trimmingCharacters(in: .whitespacesAndNewlines)
         guard !remainder.isEmpty else {
             return ImapSearchResponse(ids: [])

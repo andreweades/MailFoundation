@@ -25,8 +25,17 @@ public extension ImapCommandKind {
         .search(query.serialize())
     }
 
+    static func sort(_ query: SearchQuery, orderBy: [OrderBy], charset: String = "UTF-8") throws -> ImapCommandKind {
+        let criteria = try ImapSort.buildArguments(orderBy: orderBy, query: query, charset: charset)
+        return .sort(criteria)
+    }
+
     static func uidSearch(_ query: SearchQuery) -> ImapCommandKind {
         .uidSearch(query.serialize())
     }
 
+    static func uidSort(_ query: SearchQuery, orderBy: [OrderBy], charset: String = "UTF-8") throws -> ImapCommandKind {
+        let criteria = try ImapSort.buildArguments(orderBy: orderBy, query: query, charset: charset)
+        return .uidSort(criteria)
+    }
 }

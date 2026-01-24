@@ -464,6 +464,41 @@ public actor AsyncImapSession {
         try await search(query.serialize(), maxEmptyReads: maxEmptyReads)
     }
 
+    public func sort(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchResponse {
+        try await ensureSelected()
+        let kind = try ImapCommandKind.sort(query, orderBy: orderBy, charset: charset)
+        let command = try await client.send(kind)
+        var ids: [UInt32] = []
+        var emptyReads = 0
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                if let search = ImapSearchResponse.parse(message.line) {
+                    ids = search.ids
+                }
+                if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                    if response.isOk {
+                        return ImapSearchResponse(ids: ids)
+                    }
+                    throw SessionError.imapError(status: response.status, text: response.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
     public func uidSearch(_ criteria: String, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
         try await ensureSelected()
         let command = try await client.send(.uidSearch(criteria))
@@ -495,6 +530,41 @@ public actor AsyncImapSession {
 
     public func uidSearch(_ query: SearchQuery, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
         try await uidSearch(query.serialize(), maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSort(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchResponse {
+        try await ensureSelected()
+        let kind = try ImapCommandKind.uidSort(query, orderBy: orderBy, charset: charset)
+        let command = try await client.send(kind)
+        var ids: [UInt32] = []
+        var emptyReads = 0
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                if let search = ImapSearchResponse.parse(message.line) {
+                    ids = search.ids
+                }
+                if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                    if response.isOk {
+                        return ImapSearchResponse(ids: ids)
+                    }
+                    throw SessionError.imapError(status: response.status, text: response.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
     }
 
     public func status(mailbox: String, items: [String], maxEmptyReads: Int = 10) async throws -> ImapStatusResponse {
