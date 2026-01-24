@@ -47,6 +47,11 @@ public struct SmtpResponseParser: Sendable {
         let separator = line[separatorIndex]
         let remainder = remainderStart <= line.endIndex ? String(line[remainderStart...]) : ""
 
+        if let pendingCode, pendingCode != code {
+            // Drop invalid mixed-code multiline state and treat this as a new response.
+            self.pendingCode = nil
+            pendingLines.removeAll(keepingCapacity: true)
+        }
         if pendingCode == nil {
             pendingCode = code
         }
