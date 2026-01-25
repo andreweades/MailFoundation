@@ -517,3 +517,724 @@ func asyncImapFolderDeleteClearsSelection() async throws {
     #expect(await store.selectedAccess == nil)
     #expect(await inbox.isOpen == false)
 }
+
+// MARK: - Async IMAP Store Extension Tests
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store ID command")
+func asyncImapStoreId() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let idTask = Task { try await store.id(["name": "TestClient", "version": "1.0"]) }
+    await transport.yieldIncoming(Array("* ID (\"name\" \"Dovecot\" \"version\" \"2.3\")\r\n".utf8))
+    await transport.yieldIncoming(Array("A0001 OK ID completed\r\n".utf8))
+    let response = try await idTask.value
+
+    #expect(response?.values["name"] == "Dovecot")
+    #expect(response?.values["version"] == "2.3")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store namespace command")
+func asyncImapStoreNamespace() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let nsTask = Task { try await store.namespace() }
+    await transport.yieldIncoming(Array("* NAMESPACE ((\"\" \"/\")) ((\"~\" \"/\")) ((\"#shared/\" \"/\"))\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK NAMESPACE completed\r\n".utf8))
+    let namespace = try await nsTask.value
+
+    #expect(namespace?.personal.first?.prefix == "")
+    #expect(namespace?.personal.first?.delimiter == "/")
+    #expect(namespace?.otherUsers.first?.prefix == "~")
+    #expect(namespace?.shared.first?.prefix == "#shared/")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store getQuota")
+func asyncImapStoreGetQuota() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let quotaTask = Task { try await store.getQuota("") }
+    await transport.yieldIncoming(Array("* QUOTA \"\" (STORAGE 512 1024)\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK GETQUOTA completed\r\n".utf8))
+    let quota = try await quotaTask.value
+
+    #expect(quota?.root == "")
+    #expect(quota?.resources.first?.name == "STORAGE")
+    #expect(quota?.resources.first?.usage == 512)
+    #expect(quota?.resources.first?.limit == 1024)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store getQuotaRoot")
+func asyncImapStoreGetQuotaRoot() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let quotaRootTask = Task { try await store.getQuotaRoot("INBOX") }
+    await transport.yieldIncoming(Array("* QUOTAROOT INBOX \"\"\r\n".utf8))
+    await transport.yieldIncoming(Array("* QUOTA \"\" (STORAGE 256 512)\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK GETQUOTAROOT completed\r\n".utf8))
+    let result = try await quotaRootTask.value
+
+    #expect(result.quotaRoot?.roots.contains("") == true)
+    #expect(result.quotas.first?.root == "")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store getAcl")
+func asyncImapStoreGetAcl() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let aclTask = Task { try await store.getAcl("INBOX") }
+    await transport.yieldIncoming(Array("* ACL INBOX user lrswipkxtecda admin lrswipkxtecda\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK GETACL completed\r\n".utf8))
+    let acl = try await aclTask.value
+
+    #expect(acl?.mailbox == "INBOX")
+    #expect(acl?.entries.count == 2)
+    #expect(acl?.entries.first?.identifier == "user")
+    #expect(acl?.entries.first?.rights == "lrswipkxtecda")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store setAcl")
+func asyncImapStoreSetAcl() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let setAclTask = Task { try await store.setAcl("INBOX", identifier: "bob", rights: "lrs") }
+    await transport.yieldIncoming(Array("A0002 OK SETACL completed\r\n".utf8))
+    let response = try await setAclTask.value
+
+    #expect(response.isOk == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store listRights")
+func asyncImapStoreListRights() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let listRightsTask = Task { try await store.listRights("INBOX", identifier: "bob") }
+    await transport.yieldIncoming(Array("* LISTRIGHTS INBOX bob lr s w i p k x t e c d a\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK LISTRIGHTS completed\r\n".utf8))
+    let response = try await listRightsTask.value
+
+    #expect(response?.mailbox == "INBOX")
+    #expect(response?.identifier == "bob")
+    #expect(response?.requiredRights == "lr")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store myRights")
+func asyncImapStoreMyRights() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let myRightsTask = Task { try await store.myRights("INBOX") }
+    await transport.yieldIncoming(Array("* MYRIGHTS INBOX lrswipkxtecda\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK MYRIGHTS completed\r\n".utf8))
+    let response = try await myRightsTask.value
+
+    #expect(response?.mailbox == "INBOX")
+    #expect(response?.rights == "lrswipkxtecda")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store getMetadata")
+func asyncImapStoreGetMetadata() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let metadataTask = Task { try await store.getMetadata("INBOX", entries: ["/private/comment"]) }
+    await transport.yieldIncoming(Array("* METADATA INBOX (/private/comment \"My comment\")\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK GETMETADATA completed\r\n".utf8))
+    let response = try await metadataTask.value
+
+    #expect(response?.mailbox == "INBOX")
+    #expect(response?.entries.first { $0.key == "/private/comment" }?.value == "My comment")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store setMetadata")
+func asyncImapStoreSetMetadata() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let entry = ImapMetadataEntry(key: "/private/comment", value: "New comment")
+    let setMetadataTask = Task { try await store.setMetadata("INBOX", entries: [entry]) }
+    await transport.yieldIncoming(Array("A0002 OK SETMETADATA completed\r\n".utf8))
+    let response = try await setMetadataTask.value
+
+    #expect(response.isOk == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store copy")
+func asyncImapStoreCopy() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readWrite) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK SELECT\r\n".utf8))
+    _ = try await openTask.value
+
+    let copyTask = Task { try await store.copy("1:2", to: "Archive") }
+    await transport.yieldIncoming(Array("A0003 OK [COPYUID 12345 1:2 101:102] COPY completed\r\n".utf8))
+    let result = try await copyTask.value
+
+    #expect(result.response.isOk == true)
+    #expect(result.copyUid?.uidValidity == 12345)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store uidCopy")
+func asyncImapStoreUidCopy() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readWrite) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK SELECT\r\n".utf8))
+    _ = try await openTask.value
+
+    var uidSet = UniqueIdSet()
+    uidSet.add(UniqueId(id: 101))
+    uidSet.add(UniqueId(id: 102))
+
+    let copyTask = Task { try await store.uidCopy(uidSet, to: "Archive") }
+    await transport.yieldIncoming(Array("A0003 OK [COPYUID 12345 101:102 201:202] UID COPY completed\r\n".utf8))
+    let result = try await copyTask.value
+
+    #expect(result.response.isOk == true)
+    #expect(result.copyUid != nil)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store uidMove")
+func asyncImapStoreUidMove() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readWrite) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK SELECT\r\n".utf8))
+    _ = try await openTask.value
+
+    var uidSet = UniqueIdSet()
+    uidSet.add(UniqueId(id: 101))
+
+    let moveTask = Task { try await store.uidMove(uidSet, to: "Trash") }
+    await transport.yieldIncoming(Array("* 1 EXPUNGE\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK [COPYUID 12345 101 301] UID MOVE completed\r\n".utf8))
+    let result = try await moveTask.value
+
+    #expect(result.response.isOk == true)
+}
+
+// MARK: - Async IMAP Folder Extension Tests
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder copy")
+func asyncImapFolderCopy() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readWrite) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK SELECT\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let copyTask = Task { try await inbox.copy("1", to: "Archive") }
+    await transport.yieldIncoming(Array("A0003 OK [COPYUID 12345 1 101] COPY completed\r\n".utf8))
+    let result = try await copyTask.value
+
+    #expect(result.response.isOk == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder move")
+func asyncImapFolderMove() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readWrite) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK SELECT\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let moveTask = Task { try await inbox.move("1", to: "Trash") }
+    await transport.yieldIncoming(Array("* 1 EXPUNGE\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK [COPYUID 12345 1 501] MOVE completed\r\n".utf8))
+    let result = try await moveTask.value
+
+    #expect(result.response.isOk == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder status")
+func asyncImapFolderStatus() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let folder = try await store.getFolder("INBOX")
+    let statusTask = Task { try await folder.status(items: ["MESSAGES", "UNSEEN", "UIDNEXT"]) }
+    await transport.yieldIncoming(Array("* STATUS INBOX (MESSAGES 10 UNSEEN 3 UIDNEXT 100)\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK STATUS completed\r\n".utf8))
+    let status = try await statusTask.value
+
+    #expect(status.mailbox == "INBOX")
+    #expect(status.items["MESSAGES"] == 10)
+    #expect(status.items["UNSEEN"] == 3)
+    #expect(status.items["UIDNEXT"] == 100)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder expunge")
+func asyncImapFolderExpunge() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readWrite) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK SELECT\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let expungeTask = Task { try await inbox.expunge() }
+    await transport.yieldIncoming(Array("* 2 EXPUNGE\r\n".utf8))
+    await transport.yieldIncoming(Array("* 3 EXPUNGE\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK EXPUNGE completed\r\n".utf8))
+    let response = try await expungeTask.value
+
+    #expect(response.isOk == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder getQuotaRoot")
+func asyncImapFolderGetQuotaRoot() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readOnly) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK EXAMINE\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let quotaRootTask = Task { try await inbox.getQuotaRoot() }
+    await transport.yieldIncoming(Array("* QUOTAROOT INBOX \"\"\r\n".utf8))
+    await transport.yieldIncoming(Array("* QUOTA \"\" (STORAGE 128 256)\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK GETQUOTAROOT completed\r\n".utf8))
+    let result = try await quotaRootTask.value
+
+    #expect(result.quotaRoot?.roots.contains("") == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder getAcl")
+func asyncImapFolderGetAcl() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readOnly) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK EXAMINE\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let aclTask = Task { try await inbox.getAcl() }
+    await transport.yieldIncoming(Array("* ACL INBOX user lrswipkxtecda\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK GETACL completed\r\n".utf8))
+    let acl = try await aclTask.value
+
+    #expect(acl?.mailbox == "INBOX")
+    #expect(acl?.entries.first?.identifier == "user")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder setAcl")
+func asyncImapFolderSetAcl() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readWrite) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK SELECT\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let setAclTask = Task { try await inbox.setAcl(identifier: "bob", rights: "lrs") }
+    await transport.yieldIncoming(Array("A0003 OK SETACL completed\r\n".utf8))
+    let response = try await setAclTask.value
+
+    #expect(response.isOk == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder myRights")
+func asyncImapFolderMyRights() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readOnly) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK EXAMINE\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let myRightsTask = Task { try await inbox.myRights() }
+    await transport.yieldIncoming(Array("* MYRIGHTS INBOX lrswipkxtecda\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK MYRIGHTS completed\r\n".utf8))
+    let response = try await myRightsTask.value
+
+    #expect(response?.mailbox == "INBOX")
+    #expect(response?.rights == "lrswipkxtecda")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder getMetadata")
+func asyncImapFolderGetMetadata() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readOnly) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK EXAMINE\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let metadataTask = Task { try await inbox.getMetadata(entries: ["/private/comment"]) }
+    await transport.yieldIncoming(Array("* METADATA INBOX (/private/comment \"Folder comment\")\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK GETMETADATA completed\r\n".utf8))
+    let response = try await metadataTask.value
+
+    #expect(response?.mailbox == "INBOX")
+    #expect(response?.entries.first { $0.key == "/private/comment" }?.value == "Folder comment")
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder setMetadata")
+func asyncImapFolderSetMetadata() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readWrite) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK SELECT\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let entry = ImapMetadataEntry(key: "/private/comment", value: "Updated comment")
+    let setMetadataTask = Task { try await inbox.setMetadata(entries: [entry]) }
+    await transport.yieldIncoming(Array("A0003 OK SETMETADATA completed\r\n".utf8))
+    let response = try await setMetadataTask.value
+
+    #expect(response.isOk == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder uidSort")
+func asyncImapFolderUidSort() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readOnly) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK EXAMINE\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let sortTask = Task { try await inbox.uidSort([.reverseDate], query: .all) }
+    await transport.yieldIncoming(Array("* SORT 103 102 101\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK UID SORT completed\r\n".utf8))
+    let response = try await sortTask.value
+
+    #expect(response.ids == [103, 102, 101])
+    #expect(response.isUid == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder uidSortIdSet")
+func asyncImapFolderUidSortIdSet() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readOnly) }
+    await transport.yieldIncoming(Array("* 5 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK EXAMINE\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let sortTask = Task { try await inbox.uidSortIdSet([.arrival], query: .all, validity: 12345) }
+    await transport.yieldIncoming(Array("* SORT 101 102 103\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK UID SORT completed\r\n".utf8))
+    let idSet = try await sortTask.value
+
+    switch idSet {
+    case let .uid(set):
+        #expect(set.validity == 12345)
+        #expect(set.count == 3)
+    case .sequence:
+        Issue.record("Expected uid set")
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder search with query")
+func asyncImapFolderSearchWithQuery() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readOnly) }
+    await transport.yieldIncoming(Array("* 10 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK EXAMINE\r\n".utf8))
+    let inbox = try await openTask.value
+
+    let query = SearchQuery.from("sender@example.com").and(.unseen)
+    let searchTask = Task { try await inbox.search(query) }
+    await transport.yieldIncoming(Array("* SEARCH 2 5 8\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK SEARCH completed\r\n".utf8))
+    let response = try await searchTask.value
+
+    #expect(response.ids == [2, 5, 8])
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP folder uidFetchSummaries")
+func asyncImapFolderUidFetchSummaries() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncImapMailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("* OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await store.authenticate(user: "user", password: "pass") }
+    await transport.yieldIncoming(Array("A0001 OK LOGIN\r\n".utf8))
+    _ = try await authTask.value
+
+    let openTask = Task { try await store.openInbox(access: .readOnly) }
+    await transport.yieldIncoming(Array("* 10 EXISTS\r\n".utf8))
+    await transport.yieldIncoming(Array("A0002 OK EXAMINE\r\n".utf8))
+    let inbox = try await openTask.value
+
+    var uidSet = UniqueIdSet()
+    uidSet.add(UniqueId(id: 101))
+    uidSet.add(UniqueId(id: 102))
+
+    let request = FetchRequest(items: [.flags, .uniqueId])
+    let fetchTask = Task { try await inbox.uidFetchSummaries(uidSet, request: request) }
+    await transport.yieldIncoming(Array("* 1 FETCH (UID 101 FLAGS (\\Seen))\r\n".utf8))
+    await transport.yieldIncoming(Array("* 2 FETCH (UID 102 FLAGS (\\Flagged))\r\n".utf8))
+    await transport.yieldIncoming(Array("A0003 OK UID FETCH completed\r\n".utf8))
+    let summaries = try await fetchTask.value
+
+    #expect(summaries.count == 2)
+    #expect(summaries[0].uniqueId?.id == 101)
+    #expect(summaries[0].flags.contains(.seen) == true)
+    #expect(summaries[1].uniqueId?.id == 102)
+    #expect(summaries[1].flags.contains(.flagged) == true)
+}
