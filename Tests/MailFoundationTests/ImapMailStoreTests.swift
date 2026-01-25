@@ -162,6 +162,41 @@ func imapFolderSearchIdSet() throws {
     }
 }
 
+@Test("IMAP store search idSet uses selected folder")
+func imapStoreSearchIdSetUsesSelection() throws {
+    let transport = TestTransport(incoming: [
+        Array("* OK Ready\r\n".utf8),
+        Array("A0001 OK LOGIN\r\n".utf8),
+        Array("* 1 EXISTS\r\n".utf8),
+        Array("A0002 OK EXAMINE\r\n".utf8),
+        Array("* SEARCH 4 2\r\n".utf8),
+        Array("A0003 OK SEARCH\r\n".utf8)
+    ])
+    let store = ImapMailStore(transport: transport)
+    _ = try store.connect()
+    _ = try store.authenticate(user: "user", password: "pass")
+    _ = try store.openInbox(access: .readOnly)
+
+    let idSet = try store.searchIdSet(.all)
+    switch idSet {
+    case let .sequence(set):
+        #expect(set.count == 2)
+        #expect(set.contains(4))
+        #expect(set.contains(2))
+    case .uid:
+        #expect(Bool(false))
+    }
+}
+
+@Test("IMAP store search idSet requires selection")
+func imapStoreSearchIdSetRequiresSelection() throws {
+    let store = ImapMailStore(transport: TestTransport(incoming: []))
+
+    #expect(throws: ImapMailStoreError.noSelectedFolder) {
+        _ = try store.searchIdSet(.all)
+    }
+}
+
 @available(macOS 10.15, iOS 13.0, *)
 @Test("Async IMAP store open inbox")
 func asyncImapStoreOpenInbox() async throws {
@@ -185,6 +220,21 @@ func asyncImapStoreOpenInbox() async throws {
     #expect(selectedFolder === inbox)
     #expect(await store.selectedAccess == .readOnly)
     #expect(await inbox.isOpen == true)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store search idSet requires selection")
+func asyncImapStoreSearchIdSetRequiresSelection() async throws {
+    let store = AsyncImapMailStore(transport: AsyncStreamTransport())
+
+    do {
+        _ = try await store.searchIdSet(.all)
+        #expect(Bool(false))
+    } catch let error as ImapMailStoreError {
+        #expect(error == .noSelectedFolder)
+    } catch {
+        #expect(Bool(false))
+    }
 }
 
 @available(macOS 10.15, iOS 13.0, *)

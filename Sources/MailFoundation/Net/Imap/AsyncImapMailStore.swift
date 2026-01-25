@@ -94,6 +94,13 @@ public actor AsyncImapMailStore: AsyncMailStore {
         _ = try await folder.close()
     }
 
+    private func requireSelectedFolder() throws -> AsyncImapFolder {
+        guard let folder = selectedFolderStorage else {
+            throw ImapMailStoreError.noSelectedFolder
+        }
+        return folder
+    }
+
     public func createFolder(_ path: String, maxEmptyReads: Int = 10) async throws -> AsyncImapFolder {
         let folder = try await getFolder(path)
         _ = try await folder.create(maxEmptyReads: maxEmptyReads)
@@ -145,6 +152,64 @@ public actor AsyncImapMailStore: AsyncMailStore {
 
     public func unsubscribeFolder(_ folder: AsyncImapFolder, maxEmptyReads: Int = 10) async throws -> ImapResponse {
         try await folder.unsubscribe(maxEmptyReads: maxEmptyReads)
+    }
+
+    public func searchIdSet(
+        _ criteria: String,
+        validity: UInt32 = 0,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchIdSet {
+        let folder = try requireSelectedFolder()
+        return try await folder.searchIdSet(criteria, validity: validity, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func searchIdSet(
+        _ query: SearchQuery,
+        validity: UInt32 = 0,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchIdSet {
+        let folder = try requireSelectedFolder()
+        return try await folder.searchIdSet(query, validity: validity, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSearchIdSet(
+        _ criteria: String,
+        validity: UInt32 = 0,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchIdSet {
+        let folder = try requireSelectedFolder()
+        return try await folder.uidSearchIdSet(criteria, validity: validity, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSearchIdSet(
+        _ query: SearchQuery,
+        validity: UInt32 = 0,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchIdSet {
+        let folder = try requireSelectedFolder()
+        return try await folder.uidSearchIdSet(query, validity: validity, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func sortIdSet(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        validity: UInt32 = 0,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchIdSet {
+        let folder = try requireSelectedFolder()
+        return try await folder.sortIdSet(orderBy, query: query, charset: charset, validity: validity, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSortIdSet(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        validity: UInt32 = 0,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchIdSet {
+        let folder = try requireSelectedFolder()
+        return try await folder.uidSortIdSet(orderBy, query: query, charset: charset, validity: validity, maxEmptyReads: maxEmptyReads)
     }
 
     internal func updateSelectedFolder(_ folder: AsyncImapFolder?, access: FolderAccess?) {

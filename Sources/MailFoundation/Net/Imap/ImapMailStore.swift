@@ -73,6 +73,13 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
         _ = try folder.close()
     }
 
+    private func requireSelectedFolder() throws -> ImapFolder {
+        guard let folder = selectedFolder else {
+            throw ImapMailStoreError.noSelectedFolder
+        }
+        return folder
+    }
+
     public func createFolder(_ path: String) throws -> ImapFolder {
         let folder = try getFolder(path)
         _ = try folder.create()
@@ -124,6 +131,40 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
 
     public func unsubscribeFolder(_ folder: ImapFolder) throws -> ImapResponse {
         try folder.unsubscribe()
+    }
+
+    public func searchIdSet(_ criteria: String, validity: UInt32 = 0) throws -> ImapSearchIdSet {
+        try requireSelectedFolder().searchIdSet(criteria, validity: validity)
+    }
+
+    public func searchIdSet(_ query: SearchQuery, validity: UInt32 = 0) throws -> ImapSearchIdSet {
+        try requireSelectedFolder().searchIdSet(query, validity: validity)
+    }
+
+    public func uidSearchIdSet(_ criteria: String, validity: UInt32 = 0) throws -> ImapSearchIdSet {
+        try requireSelectedFolder().uidSearchIdSet(criteria, validity: validity)
+    }
+
+    public func uidSearchIdSet(_ query: SearchQuery, validity: UInt32 = 0) throws -> ImapSearchIdSet {
+        try requireSelectedFolder().uidSearchIdSet(query, validity: validity)
+    }
+
+    public func sortIdSet(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        validity: UInt32 = 0
+    ) throws -> ImapSearchIdSet {
+        try requireSelectedFolder().sortIdSet(orderBy, query: query, charset: charset, validity: validity)
+    }
+
+    public func uidSortIdSet(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        validity: UInt32 = 0
+    ) throws -> ImapSearchIdSet {
+        try requireSelectedFolder().uidSortIdSet(orderBy, query: query, charset: charset, validity: validity)
     }
 
     internal func updateSelectedFolder(_ folder: ImapFolder?, access: FolderAccess?) {
