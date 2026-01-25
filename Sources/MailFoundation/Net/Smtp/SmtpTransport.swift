@@ -109,6 +109,12 @@ public final class SmtpTransport: MailTransportBase<SmtpResponse>, MailTransport
         return response
     }
 
+    public func authenticate(_ authentication: SmtpAuthentication) throws -> SmtpResponse {
+        let response = try session.authenticate(authentication)
+        updateState(.authenticated)
+        return response
+    }
+
     public func send(
         _ message: MimeMessage,
         options: FormatOptions = MailTransportFormatOptions.default,

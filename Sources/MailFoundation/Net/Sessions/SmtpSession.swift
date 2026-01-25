@@ -204,6 +204,20 @@ public final class SmtpSession {
         throw smtpCommandError(.unexpectedStatusCode, response: response)
     }
 
+    public func authenticate(_ authentication: SmtpAuthentication) throws -> SmtpResponse {
+        if let responder = authentication.responder {
+            return try authenticate(
+                mechanism: authentication.mechanism,
+                initialResponse: authentication.initialResponse,
+                responder: responder
+            )
+        }
+        return try authenticate(
+            mechanism: authentication.mechanism,
+            initialResponse: authentication.initialResponse
+        )
+    }
+
     public func authenticate(
         mechanism: String,
         initialResponse: String? = nil,

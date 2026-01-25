@@ -232,6 +232,61 @@ public actor AsyncImapMailStore: AsyncMailStore {
         try await session.namespace(maxEmptyReads: maxEmptyReads)
     }
 
+    public func getQuota(_ root: String, maxEmptyReads: Int = 10) async throws -> ImapQuotaResponse? {
+        try await session.getQuota(root, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func getQuotaRoot(_ mailbox: String, maxEmptyReads: Int = 10) async throws -> ImapQuotaRootResult {
+        try await session.getQuotaRoot(mailbox, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func getAcl(_ mailbox: String, maxEmptyReads: Int = 10) async throws -> ImapAclResponse? {
+        try await session.getAcl(mailbox: mailbox, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func setAcl(
+        _ mailbox: String,
+        identifier: String,
+        rights: String,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        try await session.setAcl(
+            mailbox: mailbox,
+            identifier: identifier,
+            rights: rights,
+            maxEmptyReads: maxEmptyReads
+        )
+    }
+
+    public func listRights(
+        _ mailbox: String,
+        identifier: String,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapListRightsResponse? {
+        try await session.listRights(mailbox: mailbox, identifier: identifier, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func myRights(_ mailbox: String, maxEmptyReads: Int = 10) async throws -> ImapMyRightsResponse? {
+        try await session.myRights(mailbox: mailbox, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func getMetadata(
+        _ mailbox: String,
+        options: ImapMetadataOptions? = nil,
+        entries: [String],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapMetadataResponse? {
+        try await session.getMetadata(mailbox: mailbox, options: options, entries: entries, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func setMetadata(
+        _ mailbox: String,
+        entries: [ImapMetadataEntry],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        try await session.setMetadata(mailbox: mailbox, entries: entries, maxEmptyReads: maxEmptyReads)
+    }
+
     public func fetchSummaries(
         _ set: String,
         request: FetchRequest,
@@ -248,6 +303,52 @@ public actor AsyncImapMailStore: AsyncMailStore {
     ) async throws -> [MessageSummary] {
         let folder = try requireSelectedFolder()
         return try await folder.uidFetchSummaries(set, request: request, previewLength: previewLength)
+    }
+
+    public func getQuotaRoot(maxEmptyReads: Int = 10) async throws -> ImapQuotaRootResult {
+        let folder = try requireSelectedFolder()
+        return try await folder.getQuotaRoot(maxEmptyReads: maxEmptyReads)
+    }
+
+    public func getAcl(maxEmptyReads: Int = 10) async throws -> ImapAclResponse? {
+        let folder = try requireSelectedFolder()
+        return try await folder.getAcl(maxEmptyReads: maxEmptyReads)
+    }
+
+    public func setAcl(
+        identifier: String,
+        rights: String,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        let folder = try requireSelectedFolder()
+        return try await folder.setAcl(identifier: identifier, rights: rights, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func listRights(identifier: String, maxEmptyReads: Int = 10) async throws -> ImapListRightsResponse? {
+        let folder = try requireSelectedFolder()
+        return try await folder.listRights(identifier: identifier, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func myRights(maxEmptyReads: Int = 10) async throws -> ImapMyRightsResponse? {
+        let folder = try requireSelectedFolder()
+        return try await folder.myRights(maxEmptyReads: maxEmptyReads)
+    }
+
+    public func getMetadata(
+        options: ImapMetadataOptions? = nil,
+        entries: [String],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapMetadataResponse? {
+        let folder = try requireSelectedFolder()
+        return try await folder.getMetadata(options: options, entries: entries, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func setMetadata(
+        entries: [ImapMetadataEntry],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        let folder = try requireSelectedFolder()
+        return try await folder.setMetadata(entries: entries, maxEmptyReads: maxEmptyReads)
     }
 
     public func searchIdSet(
@@ -532,6 +633,55 @@ public actor AsyncImapFolder: AsyncMailFolder {
 
     public func uidFetchSummaries(_ set: UniqueIdSet, request: FetchRequest, previewLength: Int = 512) async throws -> [MessageSummary] {
         try await session.uidFetchSummaries(set, request: request, previewLength: previewLength)
+    }
+
+    public func getQuotaRoot(maxEmptyReads: Int = 10) async throws -> ImapQuotaRootResult {
+        try await session.getQuotaRoot(mailbox.name, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func getAcl(maxEmptyReads: Int = 10) async throws -> ImapAclResponse? {
+        try await session.getAcl(mailbox: mailbox.name, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func setAcl(
+        identifier: String,
+        rights: String,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        try await session.setAcl(
+            mailbox: mailbox.name,
+            identifier: identifier,
+            rights: rights,
+            maxEmptyReads: maxEmptyReads
+        )
+    }
+
+    public func listRights(identifier: String, maxEmptyReads: Int = 10) async throws -> ImapListRightsResponse? {
+        try await session.listRights(mailbox: mailbox.name, identifier: identifier, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func myRights(maxEmptyReads: Int = 10) async throws -> ImapMyRightsResponse? {
+        try await session.myRights(mailbox: mailbox.name, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func getMetadata(
+        options: ImapMetadataOptions? = nil,
+        entries: [String],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapMetadataResponse? {
+        try await session.getMetadata(
+            mailbox: mailbox.name,
+            options: options,
+            entries: entries,
+            maxEmptyReads: maxEmptyReads
+        )
+    }
+
+    public func setMetadata(
+        entries: [ImapMetadataEntry],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        try await session.setMetadata(mailbox: mailbox.name, entries: entries, maxEmptyReads: maxEmptyReads)
     }
 
     internal func updateOpenState(_ access: FolderAccess?) async {

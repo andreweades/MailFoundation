@@ -24,6 +24,14 @@ public enum ImapCommandKind: Sendable {
     case close
     case expunge
     case namespace
+    case getQuota(String)
+    case getQuotaRoot(String)
+    case getAcl(String)
+    case setAcl(String, identifier: String, rights: String)
+    case listRights(String, identifier: String)
+    case myRights(String)
+    case getMetadata(String, options: ImapMetadataOptions?, entries: [String])
+    case setMetadata(String, entries: [ImapMetadataEntry])
     case id(String)
     case fetch(String, String)
     case store(String, String)
@@ -86,6 +94,27 @@ public enum ImapCommandKind: Sendable {
             return ImapCommand(tag: tag, name: "EXPUNGE")
         case .namespace:
             return ImapCommand(tag: tag, name: "NAMESPACE")
+        case let .getQuota(root):
+            return ImapCommand(tag: tag, name: "GETQUOTA", arguments: root)
+        case let .getQuotaRoot(mailbox):
+            return ImapCommand(tag: tag, name: "GETQUOTAROOT", arguments: mailbox)
+        case let .getAcl(mailbox):
+            return ImapCommand(tag: tag, name: "GETACL", arguments: mailbox)
+        case let .setAcl(mailbox, identifier, rights):
+            return ImapCommand(tag: tag, name: "SETACL", arguments: "\(mailbox) \(identifier) \(rights)")
+        case let .listRights(mailbox, identifier):
+            return ImapCommand(tag: tag, name: "LISTRIGHTS", arguments: "\(mailbox) \(identifier)")
+        case let .myRights(mailbox):
+            return ImapCommand(tag: tag, name: "MYRIGHTS", arguments: mailbox)
+        case let .getMetadata(mailbox, options, entries):
+            let entryList = ImapMetadata.formatEntryList(entries)
+            if let options = options?.arguments() {
+                return ImapCommand(tag: tag, name: "GETMETADATA", arguments: "\(mailbox) \(options) \(entryList)")
+            }
+            return ImapCommand(tag: tag, name: "GETMETADATA", arguments: "\(mailbox) \(entryList)")
+        case let .setMetadata(mailbox, entries):
+            let entryList = ImapMetadata.formatEntryPairs(entries)
+            return ImapCommand(tag: tag, name: "SETMETADATA", arguments: "\(mailbox) \(entryList)")
         case let .id(arguments):
             return ImapCommand(tag: tag, name: "ID", arguments: arguments)
         case let .fetch(set, items):

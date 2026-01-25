@@ -123,6 +123,23 @@ public actor AsyncSmtpSession {
         try await client.authenticate(mechanism: mechanism, initialResponse: initialResponse)
     }
 
+    public func authenticate(_ authentication: SmtpAuthentication) async throws -> SmtpResponse? {
+        if let responder = authentication.responder {
+            let response = try await authenticate(
+                mechanism: authentication.mechanism,
+                initialResponse: authentication.initialResponse,
+                responder: { challenge in
+                    try responder(challenge)
+                }
+            )
+            return response
+        }
+        return try await authenticate(
+            mechanism: authentication.mechanism,
+            initialResponse: authentication.initialResponse
+        )
+    }
+
     public func authenticate(
         mechanism: String,
         initialResponse: String? = nil,

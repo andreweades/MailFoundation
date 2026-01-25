@@ -189,6 +189,42 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
         try session.namespace()
     }
 
+    public func getQuota(_ root: String) throws -> ImapQuotaResponse? {
+        try session.getQuota(root)
+    }
+
+    public func getQuotaRoot(_ mailbox: String) throws -> ImapQuotaRootResult {
+        try session.getQuotaRoot(mailbox)
+    }
+
+    public func getAcl(_ mailbox: String) throws -> ImapAclResponse? {
+        try session.getAcl(mailbox: mailbox)
+    }
+
+    public func setAcl(_ mailbox: String, identifier: String, rights: String) throws -> ImapResponse {
+        try session.setAcl(mailbox: mailbox, identifier: identifier, rights: rights)
+    }
+
+    public func listRights(_ mailbox: String, identifier: String) throws -> ImapListRightsResponse? {
+        try session.listRights(mailbox: mailbox, identifier: identifier)
+    }
+
+    public func myRights(_ mailbox: String) throws -> ImapMyRightsResponse? {
+        try session.myRights(mailbox: mailbox)
+    }
+
+    public func getMetadata(
+        _ mailbox: String,
+        options: ImapMetadataOptions? = nil,
+        entries: [String]
+    ) throws -> ImapMetadataResponse? {
+        try session.getMetadata(mailbox: mailbox, options: options, entries: entries)
+    }
+
+    public func setMetadata(_ mailbox: String, entries: [ImapMetadataEntry]) throws -> ImapResponse {
+        try session.setMetadata(mailbox: mailbox, entries: entries)
+    }
+
     public func fetchSummaries(_ set: String, request: FetchRequest, previewLength: Int = 512) throws -> [MessageSummary] {
         try requireSelectedFolder().fetchSummaries(set, request: request, previewLength: previewLength)
     }
@@ -414,5 +450,33 @@ public final class ImapFolder: MailFolderBase {
 
     public func uidFetchSummaries(_ set: UniqueIdSet, request: FetchRequest, previewLength: Int = 512) throws -> [MessageSummary] {
         try session.uidFetchSummaries(set, request: request, previewLength: previewLength)
+    }
+
+    public func getQuotaRoot() throws -> ImapQuotaRootResult {
+        try session.getQuotaRoot(mailbox.name)
+    }
+
+    public func getAcl() throws -> ImapAclResponse? {
+        try session.getAcl(mailbox: mailbox.name)
+    }
+
+    public func setAcl(identifier: String, rights: String) throws -> ImapResponse {
+        try session.setAcl(mailbox: mailbox.name, identifier: identifier, rights: rights)
+    }
+
+    public func listRights(identifier: String) throws -> ImapListRightsResponse? {
+        try session.listRights(mailbox: mailbox.name, identifier: identifier)
+    }
+
+    public func myRights() throws -> ImapMyRightsResponse? {
+        try session.myRights(mailbox: mailbox.name)
+    }
+
+    public func getMetadata(options: ImapMetadataOptions? = nil, entries: [String]) throws -> ImapMetadataResponse? {
+        try session.getMetadata(mailbox: mailbox.name, options: options, entries: entries)
+    }
+
+    public func setMetadata(entries: [ImapMetadataEntry]) throws -> ImapResponse {
+        try session.setMetadata(mailbox: mailbox.name, entries: entries)
     }
 }

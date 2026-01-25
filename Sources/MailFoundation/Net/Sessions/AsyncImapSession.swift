@@ -650,6 +650,260 @@ public actor AsyncImapSession {
         throw SessionError.timeout
     }
 
+    public func getQuota(_ root: String, maxEmptyReads: Int = 10) async throws -> ImapQuotaResponse? {
+        try await ensureAuthenticated()
+        let command = try await client.send(.getQuota(root))
+        var emptyReads = 0
+        var response: ImapQuotaResponse?
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let parsed = ImapQuotaResponse.parse(message.line) {
+                    response = parsed
+                }
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        return response
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    public func getQuotaRoot(_ mailbox: String, maxEmptyReads: Int = 10) async throws -> ImapQuotaRootResult {
+        try await ensureAuthenticated()
+        let command = try await client.send(.getQuotaRoot(mailbox))
+        var emptyReads = 0
+        var quotaRoot: ImapQuotaRootResponse?
+        var quotas: [ImapQuotaResponse] = []
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let parsedRoot = ImapQuotaRootResponse.parse(message.line) {
+                    quotaRoot = parsedRoot
+                }
+                if let parsedQuota = ImapQuotaResponse.parse(message.line) {
+                    quotas.append(parsedQuota)
+                }
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        return ImapQuotaRootResult(quotaRoot: quotaRoot, quotas: quotas)
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    public func getAcl(mailbox: String, maxEmptyReads: Int = 10) async throws -> ImapAclResponse? {
+        try await ensureAuthenticated()
+        let command = try await client.send(.getAcl(mailbox))
+        var emptyReads = 0
+        var response: ImapAclResponse?
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let parsed = ImapAclResponse.parse(message.line) {
+                    response = parsed
+                }
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        return response
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    public func setAcl(
+        mailbox: String,
+        identifier: String,
+        rights: String,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        try await ensureAuthenticated()
+        let command = try await client.send(.setAcl(mailbox, identifier: identifier, rights: rights))
+        var emptyReads = 0
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        return tagged
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    public func listRights(
+        mailbox: String,
+        identifier: String,
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapListRightsResponse? {
+        try await ensureAuthenticated()
+        let command = try await client.send(.listRights(mailbox, identifier: identifier))
+        var emptyReads = 0
+        var response: ImapListRightsResponse?
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let parsed = ImapListRightsResponse.parse(message.line) {
+                    response = parsed
+                }
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        return response
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    public func myRights(mailbox: String, maxEmptyReads: Int = 10) async throws -> ImapMyRightsResponse? {
+        try await ensureAuthenticated()
+        let command = try await client.send(.myRights(mailbox))
+        var emptyReads = 0
+        var response: ImapMyRightsResponse?
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let parsed = ImapMyRightsResponse.parse(message.line) {
+                    response = parsed
+                }
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        return response
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    public func getMetadata(
+        mailbox: String,
+        options: ImapMetadataOptions? = nil,
+        entries: [String],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapMetadataResponse? {
+        try await ensureAuthenticated()
+        let command = try await client.send(.getMetadata(mailbox, options: options, entries: entries))
+        var emptyReads = 0
+        var response: ImapMetadataResponse?
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let parsed = ImapMetadataResponse.parse(message) {
+                    response = parsed
+                }
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        return response
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    public func setMetadata(
+        mailbox: String,
+        entries: [ImapMetadataEntry],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        try await ensureAuthenticated()
+        let command = try await client.send(.setMetadata(mailbox, entries: entries))
+        var emptyReads = 0
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        return tagged
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
     public func id(_ parameters: [String: String?]? = nil, maxEmptyReads: Int = 10) async throws -> ImapIdResponse? {
         let command = try await client.send(.id(ImapId.buildArguments(parameters)))
         var emptyReads = 0

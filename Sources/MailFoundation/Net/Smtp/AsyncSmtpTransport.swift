@@ -117,6 +117,10 @@ public actor AsyncSmtpTransport: AsyncMailTransport {
         try await session.authenticate(mechanism: mechanism, initialResponse: initialResponse)
     }
 
+    public func authenticate(_ authentication: SmtpAuthentication) async throws -> SmtpResponse? {
+        try await session.authenticate(authentication)
+    }
+
     public func send(
         _ message: MimeMessage,
         options: FormatOptions = MailTransportFormatOptions.default,
