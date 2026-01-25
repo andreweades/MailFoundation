@@ -4,19 +4,41 @@
 // Higher-level async POP3 session helpers.
 //
 
+/// Default timeout for POP3 operations in milliseconds (2 minutes, matching MailKit).
+public let defaultPop3TimeoutMs = 120_000
+
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncPop3Session {
     private let client: AsyncPop3Client
     private let transport: AsyncTransport
 
-    public init(transport: AsyncTransport) {
-        self.transport = transport
-        self.client = AsyncPop3Client(transport: transport)
+    /// The timeout for network operations in milliseconds.
+    ///
+    /// Default is 120000 (2 minutes), matching MailKit's default.
+    /// Set to `Int.max` for no timeout.
+    public private(set) var timeoutMilliseconds: Int = defaultPop3TimeoutMs
+
+    /// Sets the timeout for network operations.
+    ///
+    /// - Parameter milliseconds: The timeout in milliseconds
+    public func setTimeoutMilliseconds(_ milliseconds: Int) {
+        timeoutMilliseconds = milliseconds
     }
 
-    public static func make(host: String, port: UInt16, backend: AsyncTransportBackend = .network) throws -> AsyncPop3Session {
+    public init(transport: AsyncTransport, timeoutMilliseconds: Int = defaultPop3TimeoutMs) {
+        self.transport = transport
+        self.client = AsyncPop3Client(transport: transport)
+        self.timeoutMilliseconds = timeoutMilliseconds
+    }
+
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        timeoutMilliseconds: Int = defaultPop3TimeoutMs
+    ) throws -> AsyncPop3Session {
         let transport = try AsyncTransportFactory.make(host: host, port: port, backend: backend)
-        return AsyncPop3Session(transport: transport)
+        return AsyncPop3Session(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
     @discardableResult

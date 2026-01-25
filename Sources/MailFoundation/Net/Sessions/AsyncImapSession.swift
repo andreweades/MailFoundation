@@ -4,6 +4,9 @@
 // Higher-level async IMAP session helpers.
 //
 
+/// Default timeout for IMAP operations in milliseconds (2 minutes, matching MailKit).
+public let defaultImapTimeoutMs = 120_000
+
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncImapSession {
     private let client: AsyncImapClient
@@ -11,14 +14,33 @@ public actor AsyncImapSession {
     public private(set) var selectedMailbox: String?
     public private(set) var selectedState = ImapSelectedState()
 
-    public init(transport: AsyncTransport) {
-        self.transport = transport
-        self.client = AsyncImapClient(transport: transport)
+    /// The timeout for network operations in milliseconds.
+    ///
+    /// Default is 120000 (2 minutes), matching MailKit's default.
+    /// Set to `Int.max` for no timeout.
+    public private(set) var timeoutMilliseconds: Int = defaultImapTimeoutMs
+
+    /// Sets the timeout for network operations.
+    ///
+    /// - Parameter milliseconds: The timeout in milliseconds
+    public func setTimeoutMilliseconds(_ milliseconds: Int) {
+        timeoutMilliseconds = milliseconds
     }
 
-    public static func make(host: String, port: UInt16, backend: AsyncTransportBackend = .network) throws -> AsyncImapSession {
+    public init(transport: AsyncTransport, timeoutMilliseconds: Int = defaultImapTimeoutMs) {
+        self.transport = transport
+        self.client = AsyncImapClient(transport: transport)
+        self.timeoutMilliseconds = timeoutMilliseconds
+    }
+
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        timeoutMilliseconds: Int = defaultImapTimeoutMs
+    ) throws -> AsyncImapSession {
         let transport = try AsyncTransportFactory.make(host: host, port: port, backend: backend)
-        return AsyncImapSession(transport: transport)
+        return AsyncImapSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
     @discardableResult

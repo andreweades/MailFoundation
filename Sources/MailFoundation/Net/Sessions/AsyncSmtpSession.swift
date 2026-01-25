@@ -4,19 +4,41 @@
 // Higher-level async SMTP session helpers.
 //
 
+/// Default timeout for SMTP operations in milliseconds (2 minutes, matching MailKit).
+public let defaultSmtpTimeoutMs = 120_000
+
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncSmtpSession {
     private let client: AsyncSmtpClient
     private let transport: AsyncTransport
 
-    public init(transport: AsyncTransport) {
-        self.transport = transport
-        self.client = AsyncSmtpClient(transport: transport)
+    /// The timeout for network operations in milliseconds.
+    ///
+    /// Default is 120000 (2 minutes), matching MailKit's default.
+    /// Set to `Int.max` for no timeout.
+    public private(set) var timeoutMilliseconds: Int = defaultSmtpTimeoutMs
+
+    /// Sets the timeout for network operations.
+    ///
+    /// - Parameter milliseconds: The timeout in milliseconds
+    public func setTimeoutMilliseconds(_ milliseconds: Int) {
+        timeoutMilliseconds = milliseconds
     }
 
-    public static func make(host: String, port: UInt16, backend: AsyncTransportBackend = .network) throws -> AsyncSmtpSession {
+    public init(transport: AsyncTransport, timeoutMilliseconds: Int = defaultSmtpTimeoutMs) {
+        self.transport = transport
+        self.client = AsyncSmtpClient(transport: transport)
+        self.timeoutMilliseconds = timeoutMilliseconds
+    }
+
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        timeoutMilliseconds: Int = defaultSmtpTimeoutMs
+    ) throws -> AsyncSmtpSession {
         let transport = try AsyncTransportFactory.make(host: host, port: port, backend: backend)
-        return AsyncSmtpSession(transport: transport)
+        return AsyncSmtpSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
     @discardableResult

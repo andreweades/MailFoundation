@@ -15,17 +15,33 @@ public actor AsyncSmtpTransport: AsyncMailTransport {
     public typealias MessageSentHandler = @Sendable (MessageSentEvent) async -> Void
     private var messageSentHandlers: [MessageSentHandler] = []
 
+    /// The timeout for network operations in milliseconds.
+    ///
+    /// Default is 120000 (2 minutes), matching MailKit's default.
+    /// Set to `Int.max` for no timeout.
+    public var timeoutMilliseconds: Int {
+        get async { await session.timeoutMilliseconds }
+    }
+
+    /// Sets the timeout for network operations.
+    ///
+    /// - Parameter milliseconds: The timeout in milliseconds
+    public func setTimeout(milliseconds: Int) async {
+        await session.setTimeoutMilliseconds(milliseconds)
+    }
+
     public static func make(
         host: String,
         port: UInt16,
-        backend: AsyncTransportBackend = .network
+        backend: AsyncTransportBackend = .network,
+        timeoutMilliseconds: Int = defaultSmtpTimeoutMs
     ) throws -> AsyncSmtpTransport {
         let transport = try AsyncTransportFactory.make(host: host, port: port, backend: backend)
-        return AsyncSmtpTransport(transport: transport)
+        return AsyncSmtpTransport(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
-    public init(transport: AsyncTransport) {
-        self.session = AsyncSmtpSession(transport: transport)
+    public init(transport: AsyncTransport, timeoutMilliseconds: Int = defaultSmtpTimeoutMs) {
+        self.session = AsyncSmtpSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
     public var capabilities: SmtpCapabilities? { storedCapabilities }

@@ -13,9 +13,28 @@ public actor AsyncImapMailStore: AsyncMailStore {
     private var selectedFolderStorage: AsyncImapFolder?
     private var selectedAccessStorage: FolderAccess?
 
-    public init(transport: AsyncTransport, protocolLogger: ProtocolLoggerType = NullProtocolLogger()) {
+    /// The timeout for network operations in milliseconds.
+    ///
+    /// Default is 120000 (2 minutes), matching MailKit's default.
+    /// Set to `Int.max` for no timeout.
+    public var timeoutMilliseconds: Int {
+        get async { await session.timeoutMilliseconds }
+    }
+
+    /// Sets the timeout for network operations.
+    ///
+    /// - Parameter milliseconds: The timeout in milliseconds
+    public func setTimeout(milliseconds: Int) async {
+        await session.setTimeoutMilliseconds(milliseconds)
+    }
+
+    public init(
+        transport: AsyncTransport,
+        protocolLogger: ProtocolLoggerType = NullProtocolLogger(),
+        timeoutMilliseconds: Int = defaultImapTimeoutMs
+    ) {
         self.protocolLogger = protocolLogger
-        self.session = AsyncImapSession(transport: transport)
+        self.session = AsyncImapSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
     @discardableResult

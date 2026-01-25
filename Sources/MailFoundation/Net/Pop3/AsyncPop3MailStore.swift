@@ -15,8 +15,23 @@ public actor AsyncPop3MailStore: AsyncMailStore {
     private var selectedFolderStorage: AsyncPop3Folder?
     private var selectedAccessStorage: FolderAccess?
 
-    public init(transport: AsyncTransport) {
-        self.session = AsyncPop3Session(transport: transport)
+    /// The timeout for network operations in milliseconds.
+    ///
+    /// Default is 120000 (2 minutes), matching MailKit's default.
+    /// Set to `Int.max` for no timeout.
+    public var timeoutMilliseconds: Int {
+        get async { await session.timeoutMilliseconds }
+    }
+
+    /// Sets the timeout for network operations.
+    ///
+    /// - Parameter milliseconds: The timeout in milliseconds
+    public func setTimeout(milliseconds: Int) async {
+        await session.setTimeoutMilliseconds(milliseconds)
+    }
+
+    public init(transport: AsyncTransport, timeoutMilliseconds: Int = defaultPop3TimeoutMs) {
+        self.session = AsyncPop3Session(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
         let folder = AsyncPop3Folder(session: session, store: nil)
         self.inbox = folder
         Task { await folder.attachStore(self) }
