@@ -133,6 +133,30 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
         try folder.unsubscribe()
     }
 
+    public func search(_ criteria: String) throws -> ImapSearchResponse {
+        try requireSelectedFolder().search(criteria)
+    }
+
+    public func search(_ query: SearchQuery) throws -> ImapSearchResponse {
+        try requireSelectedFolder().search(query)
+    }
+
+    public func uidSearch(_ criteria: String) throws -> ImapSearchResponse {
+        try requireSelectedFolder().uidSearch(criteria)
+    }
+
+    public func uidSearch(_ query: SearchQuery) throws -> ImapSearchResponse {
+        try requireSelectedFolder().uidSearch(query)
+    }
+
+    public func sort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {
+        try requireSelectedFolder().sort(orderBy, query: query, charset: charset)
+    }
+
+    public func uidSort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {
+        try requireSelectedFolder().uidSort(orderBy, query: query, charset: charset)
+    }
+
     public func searchIdSet(_ criteria: String, validity: UInt32 = 0) throws -> ImapSearchIdSet {
         try requireSelectedFolder().searchIdSet(criteria, validity: validity)
     }

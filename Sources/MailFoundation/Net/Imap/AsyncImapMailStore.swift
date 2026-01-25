@@ -154,6 +154,46 @@ public actor AsyncImapMailStore: AsyncMailStore {
         try await folder.unsubscribe(maxEmptyReads: maxEmptyReads)
     }
 
+    public func search(_ criteria: String, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
+        let folder = try requireSelectedFolder()
+        return try await folder.search(criteria, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func search(_ query: SearchQuery, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
+        let folder = try requireSelectedFolder()
+        return try await folder.search(query, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSearch(_ criteria: String, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
+        let folder = try requireSelectedFolder()
+        return try await folder.uidSearch(criteria, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSearch(_ query: SearchQuery, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
+        let folder = try requireSelectedFolder()
+        return try await folder.uidSearch(query, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func sort(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchResponse {
+        let folder = try requireSelectedFolder()
+        return try await folder.sort(orderBy, query: query, charset: charset, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func uidSort(
+        _ orderBy: [OrderBy],
+        query: SearchQuery,
+        charset: String = "UTF-8",
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapSearchResponse {
+        let folder = try requireSelectedFolder()
+        return try await folder.uidSort(orderBy, query: query, charset: charset, maxEmptyReads: maxEmptyReads)
+    }
+
     public func searchIdSet(
         _ criteria: String,
         validity: UInt32 = 0,

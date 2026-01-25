@@ -188,6 +188,25 @@ func imapStoreSearchIdSetUsesSelection() throws {
     }
 }
 
+@Test("IMAP store search uses selected folder")
+func imapStoreSearchUsesSelection() throws {
+    let transport = TestTransport(incoming: [
+        Array("* OK Ready\r\n".utf8),
+        Array("A0001 OK LOGIN\r\n".utf8),
+        Array("* 1 EXISTS\r\n".utf8),
+        Array("A0002 OK EXAMINE\r\n".utf8),
+        Array("* SEARCH 9 6\r\n".utf8),
+        Array("A0003 OK SEARCH\r\n".utf8)
+    ])
+    let store = ImapMailStore(transport: transport)
+    _ = try store.connect()
+    _ = try store.authenticate(user: "user", password: "pass")
+    _ = try store.openInbox(access: .readOnly)
+
+    let response = try store.search(.all)
+    #expect(response.ids == [9, 6])
+}
+
 @Test("IMAP store search idSet requires selection")
 func imapStoreSearchIdSetRequiresSelection() throws {
     let store = ImapMailStore(transport: TestTransport(incoming: []))
@@ -229,6 +248,21 @@ func asyncImapStoreSearchIdSetRequiresSelection() async throws {
 
     do {
         _ = try await store.searchIdSet(.all)
+        #expect(Bool(false))
+    } catch let error as ImapMailStoreError {
+        #expect(error == .noSelectedFolder)
+    } catch {
+        #expect(Bool(false))
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async IMAP store search requires selection")
+func asyncImapStoreSearchRequiresSelection() async throws {
+    let store = AsyncImapMailStore(transport: AsyncStreamTransport())
+
+    do {
+        _ = try await store.search(.all)
         #expect(Bool(false))
     } catch let error as ImapMailStoreError {
         #expect(error == .noSelectedFolder)
