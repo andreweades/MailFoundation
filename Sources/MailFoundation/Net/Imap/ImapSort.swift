@@ -37,7 +37,7 @@ public enum ImapSort {
         charset: String = "UTF-8"
     ) throws -> String {
         let order = try buildOrderBy(orderBy)
-        return "\(order) \(charset) \(query.serialize())"
+        return "\(order) \(charset) \(query.optimized().serialize())"
     }
 
     public static func buildArguments(

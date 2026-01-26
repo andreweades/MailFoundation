@@ -7,7 +7,7 @@
 import Foundation
 
 public struct SearchQuery: Sendable, CustomStringConvertible {
-    public indirect enum Term: Sendable {
+    public indirect enum Term: Sendable, Equatable {
         case all
         case answered
         case deleted
@@ -57,6 +57,10 @@ public struct SearchQuery: Sendable, CustomStringConvertible {
 
     public func serialize() -> String {
         Self.serialize(term)
+    }
+
+    public func optimized(using optimizer: SearchQueryOptimizer = DefaultSearchQueryOptimizer()) -> SearchQuery {
+        optimizer.optimize(self)
     }
 
     public func and(_ other: SearchQuery) -> SearchQuery {

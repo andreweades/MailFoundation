@@ -695,7 +695,7 @@ public final class ImapSession {
     }
 
     public func search(_ query: SearchQuery) throws -> ImapSearchResponse {
-        try search(query.serialize())
+        try search(query.optimized().serialize())
     }
 
     public func sort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {
@@ -765,7 +765,7 @@ public final class ImapSession {
     }
 
     public func uidSearch(_ query: SearchQuery) throws -> ImapSearchResponse {
-        try uidSearch(query.serialize())
+        try uidSearch(query.optimized().serialize())
     }
 
     public func uidSort(_ orderBy: [OrderBy], query: SearchQuery, charset: String = "UTF-8") throws -> ImapSearchResponse {

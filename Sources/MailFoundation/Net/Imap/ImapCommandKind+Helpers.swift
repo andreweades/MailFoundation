@@ -46,7 +46,7 @@ public extension ImapCommandKind {
     }
 
     static func search(_ query: SearchQuery) -> ImapCommandKind {
-        .search(query.serialize())
+        .search(query.optimized().serialize())
     }
 
     static func sort(_ query: SearchQuery, orderBy: [OrderBy], charset: String = "UTF-8") throws -> ImapCommandKind {
@@ -55,7 +55,7 @@ public extension ImapCommandKind {
     }
 
     static func uidSearch(_ query: SearchQuery) -> ImapCommandKind {
-        .uidSearch(query.serialize())
+        .uidSearch(query.optimized().serialize())
     }
 
     static func uidSort(_ query: SearchQuery, orderBy: [OrderBy], charset: String = "UTF-8") throws -> ImapCommandKind {

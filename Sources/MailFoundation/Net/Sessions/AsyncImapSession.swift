@@ -496,7 +496,7 @@ public actor AsyncImapSession {
     }
 
     public func search(_ query: SearchQuery, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
-        try await search(query.serialize(), maxEmptyReads: maxEmptyReads)
+        try await search(query.optimized().serialize(), maxEmptyReads: maxEmptyReads)
     }
 
     public func sort(
@@ -569,7 +569,7 @@ public actor AsyncImapSession {
     }
 
     public func uidSearch(_ query: SearchQuery, maxEmptyReads: Int = 10) async throws -> ImapSearchResponse {
-        try await uidSearch(query.serialize(), maxEmptyReads: maxEmptyReads)
+        try await uidSearch(query.optimized().serialize(), maxEmptyReads: maxEmptyReads)
     }
 
     public func uidSort(
