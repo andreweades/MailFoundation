@@ -110,6 +110,7 @@ func retryPolicyDelayWithJitter() {
 
     // With 10 samples, we should likely have at least 2 different values
     // (though technically all could be the same - just unlikely)
+    #expect(uniqueDelays.count > 1)
 }
 
 @Test("RetryPolicy equality")
