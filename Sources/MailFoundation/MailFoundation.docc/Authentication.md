@@ -71,15 +71,21 @@ MailFoundation supports several SASL authentication mechanisms:
 
 | Mechanism | Security | Description |
 |-----------|----------|-------------|
+| SCRAM-SHA-512 | High | Salted challenge-response with SHA-512 (RFC 7677) |
+| SCRAM-SHA-256 | High | Salted challenge-response with SHA-256 (RFC 7677) |
+| SCRAM-SHA-1 | High | Salted challenge-response with SHA-1 (RFC 5802) |
+| GSSAPI | High | Kerberos authentication (enterprise environments) |
+| NTLM | Medium | Microsoft challenge-response (Exchange servers) |
+| CRAM-MD5 | Medium | Challenge-response with MD5 |
 | PLAIN | Low | Sends credentials in base64 (use with TLS) |
 | LOGIN | Low | Legacy two-step authentication |
-| CRAM-MD5 | Medium | Challenge-response with MD5 |
 | XOAUTH2 | High | OAuth2 bearer token |
 
-The library automatically selects the most secure mechanism available:
+The library automatically selects the most secure mechanism available, preferring SCRAM-SHA-512 when supported:
 
 ```swift
 // The session will negotiate the best available mechanism
+// Preference order: SCRAM-SHA-512 > SCRAM-SHA-256 > SCRAM-SHA-1 > GSSAPI > NTLM > CRAM-MD5 > PLAIN > LOGIN
 try session.authenticate(username: "user", password: "pass")
 ```
 
@@ -92,6 +98,132 @@ try session.authenticate(
     password: "pass",
     mechanism: .cramMd5
 )
+```
+
+## SCRAM Authentication
+
+SCRAM (Salted Challenge Response Authentication Mechanism) is the recommended authentication method when OAuth2 is not available. It provides strong security guarantees:
+
+- **Password is never sent** - Only cryptographic proofs are exchanged
+- **Salted password hashing** - Uses PBKDF2 to protect against rainbow table attacks
+- **Mutual authentication** - Server proves it knows the password too
+- **Replay protection** - Each authentication uses a unique nonce
+
+### Using SCRAM Directly
+
+```swift
+// IMAP with SCRAM-SHA-256
+let auth = ImapSasl.scramSha256(username: "user@example.com", password: "secret")
+try session.authenticate(auth)
+
+// SMTP with SCRAM-SHA-512 (strongest variant)
+let auth = SmtpSasl.scramSha512(username: "user@example.com", password: "secret")
+try session.authenticate(auth)
+
+// POP3 with SCRAM-SHA-1 (for older servers)
+let auth = Pop3Sasl.scramSha1(username: "user@example.com", password: "secret")
+try session.authenticate(auth)
+```
+
+### SCRAM Variants
+
+Choose the appropriate SCRAM variant based on server support:
+
+| Variant | Hash Size | Recommendation |
+|---------|-----------|----------------|
+| SCRAM-SHA-512 | 512 bits | Best security, use when available |
+| SCRAM-SHA-256 | 256 bits | Good security, widely supported |
+| SCRAM-SHA-1 | 160 bits | Legacy, use only if others unavailable |
+
+```swift
+// Check which mechanisms the server supports
+let capabilities = session.capabilities
+
+if capabilities.contains(.authScramSha512) {
+    let auth = ImapSasl.scramSha512(username: user, password: pass)
+    try session.authenticate(auth)
+} else if capabilities.contains(.authScramSha256) {
+    let auth = ImapSasl.scramSha256(username: user, password: pass)
+    try session.authenticate(auth)
+} else if capabilities.contains(.authScramSha1) {
+    let auth = ImapSasl.scramSha1(username: user, password: pass)
+    try session.authenticate(auth)
+}
+```
+
+### SCRAM Protocol Flow
+
+Understanding the SCRAM authentication flow:
+
+1. **Client Initial Message** - Client sends username and a random nonce
+2. **Server Challenge** - Server responds with salt, iteration count, and combined nonce
+3. **Client Proof** - Client computes PBKDF2 hash and sends cryptographic proof
+4. **Server Verification** - Server verifies client and sends its own signature
+5. **Client Verification** - Client verifies server's signature (mutual authentication)
+
+```swift
+// Low-level SCRAM usage with ScramContext
+let context = ScramContext(
+    username: "user",
+    password: "pencil",
+    algorithm: .sha256
+)
+
+// Step 1: Get initial message to send to server
+let initialMessage = try context.getInitialMessage()
+
+// Step 2: Process server's challenge and generate response
+let clientResponse = try context.processChallenge(serverFirstMessage)
+
+// Step 3: Verify server's final message
+try context.verifyServerSignature(serverFinalMessage)
+
+// Authentication complete
+print("Authenticated: \(context.isAuthenticated)")
+```
+
+## GSSAPI/Kerberos Authentication
+
+For enterprise environments using Active Directory or Kerberos:
+
+```swift
+// IMAP with GSSAPI (uses system Kerberos credentials)
+if let auth = ImapSasl.gssapi(host: "mail.corp.example.com") {
+    try session.authenticate(auth)
+}
+
+// With explicit credentials (if not using system credential cache)
+if let auth = ImapSasl.gssapi(
+    host: "mail.corp.example.com",
+    username: "user@CORP.EXAMPLE.COM",
+    password: "password"
+) {
+    try session.authenticate(auth)
+}
+```
+
+> Note: GSSAPI requires macOS/iOS with the GSS framework and valid Kerberos credentials.
+
+## NTLM Authentication
+
+For Microsoft Exchange servers that don't support modern authentication:
+
+```swift
+// NTLM with domain from username
+let auth = ImapSasl.ntlm(
+    username: "DOMAIN\\user",  // or user@domain.com
+    password: "secret"
+)
+try session.authenticate(auth)
+
+// NTLM with explicit domain
+let auth = SmtpSasl.ntlm(
+    username: "user",
+    password: "secret",
+    domain: "CORP",
+    workstation: "WORKSTATION01"
+)
+try session.authenticate(auth)
 ```
 
 ## POP3 APOP Authentication

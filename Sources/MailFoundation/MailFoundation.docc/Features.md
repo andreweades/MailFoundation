@@ -205,11 +205,42 @@ MailFoundation supports the following SASL authentication mechanisms:
 
 | Mechanism | Security | Description |
 |-----------|----------|-------------|
+| **SCRAM-SHA-512** | High | Salted challenge-response with SHA-512 |
+| **SCRAM-SHA-256** | High | Salted challenge-response with SHA-256 (RFC 7677) |
+| **SCRAM-SHA-1** | High | Salted challenge-response with SHA-1 (RFC 5802) |
+| **GSSAPI** | High | Kerberos authentication (macOS/iOS) |
+| **NTLM** | Medium | Microsoft challenge-response (NTLMv2) |
+| **CRAM-MD5** | Medium | Challenge-response with MD5 |
 | **PLAIN** | Low | Base64 credentials (use with TLS) |
 | **LOGIN** | Low | Legacy two-step auth |
-| **CRAM-MD5** | Medium | Challenge-response with MD5 |
 | **XOAUTH2** | High | OAuth2 bearer tokens |
 | **OAUTHBEARER** | High | RFC 7628 OAuth |
+
+### SCRAM Authentication (Recommended)
+
+SCRAM (Salted Challenge Response Authentication Mechanism) is the recommended password-based authentication method:
+
+- Password is never sent over the network (only cryptographic proofs)
+- Uses PBKDF2 with configurable iteration count for salted password hashing
+- Provides mutual authentication (server proves it knows the password)
+- Protected against replay attacks via unique nonces
+- Supported variants: SHA-512 (strongest), SHA-256, SHA-1
+
+### Kerberos/GSSAPI Authentication
+
+For enterprise environments with Active Directory:
+
+- Uses system Kerberos credential cache on macOS/iOS
+- Supports custom Service Principal Names (SPNs)
+- Security layer negotiation per RFC 2222
+
+### NTLM Authentication
+
+For Microsoft Exchange servers:
+
+- NTLMv2 implementation (more secure than NTLMv1)
+- Supports DOMAIN\user and user@domain username formats
+- Domain and workstation name configuration
 
 ### OAuth2 Provider Support
 
@@ -340,6 +371,9 @@ MailFoundation strives for strict RFC compliance while handling real-world serve
 - RFC 4954 - SMTP AUTH
 - RFC 5034 - POP3 SASL
 - RFC 7628 - OAUTHBEARER
+- RFC 5802 - SCRAM-SHA-1
+- RFC 7677 - SCRAM-SHA-256
+- RFC 4752 - GSSAPI SASL Mechanism
 
 See the complete list of supported RFCs in the source repository.
 

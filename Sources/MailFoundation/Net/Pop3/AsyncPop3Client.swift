@@ -1,4 +1,28 @@
 //
+// Author: Jeffrey Stedfast <jestedfa@microsoft.com>
+//
+// Copyright (c) 2013-2026 .NET Foundation and Contributors
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+
+//
 // AsyncPop3Client.swift
 //
 // Async POP3 client backed by AsyncTransport.
@@ -93,22 +117,15 @@ public actor AsyncPop3Client {
     /// The protocol logger for debugging.
     public var protocolLogger: ProtocolLoggerType
 
-    /// Initializes a new async POP3 client.
-    ///
-    /// - Parameters:
-    ///   - transport: The async transport to use for communication.
-    ///   - protocolLogger: An optional logger for protocol-level debugging.
+    public var isDisconnected: Bool {
+        state == .disconnected
+    }
+
     public init(transport: AsyncTransport, protocolLogger: ProtocolLoggerType = NullProtocolLogger()) {
         self.transport = transport
         self.protocolLogger = protocolLogger
     }
 
-    /// Starts the client and begins reading from the transport.
-    ///
-    /// This method starts the transport and spawns a background task to read
-    /// incoming data into an internal queue.
-    ///
-    /// - Throws: An error if the transport fails to start.
     public func start() async throws {
         try await transport.start()
         state = .connected
@@ -116,9 +133,15 @@ public actor AsyncPop3Client {
             for await chunk in transport.incoming {
                 await queue.enqueue(chunk)
             }
+            await self.setDisconnected()
             await queue.finish()
         }
     }
+
+    private func setDisconnected() {
+        state = .disconnected
+    }
+
 
     /// Stops the client and disconnects from the server.
     ///

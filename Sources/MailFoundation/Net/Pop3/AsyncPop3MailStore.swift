@@ -1,4 +1,28 @@
 //
+// Author: Jeffrey Stedfast <jestedfa@microsoft.com>
+//
+// Copyright (c) 2013-2026 .NET Foundation and Contributors
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+
+//
 // AsyncPop3MailStore.swift
 //
 // Async POP3 mail store and inbox folder wrapper.
@@ -539,7 +563,7 @@ public actor AsyncPop3MailStore: AsyncMailStore {
     /// - Throws: An error if no folder is selected or the command fails.
     public func retrStream(
         _ index: Int,
-        sink: @Sendable ([UInt8]) async throws -> Void
+        sink: @Sendable @escaping ([UInt8]) async throws -> Void
     ) async throws {
         try await requireSelectedFolder().retrStream(index, sink: sink)
     }
@@ -598,7 +622,7 @@ public actor AsyncPop3MailStore: AsyncMailStore {
     public func topStream(
         _ index: Int,
         lines: Int,
-        sink: @Sendable ([UInt8]) async throws -> Void
+        sink: @Sendable @escaping ([UInt8]) async throws -> Void
     ) async throws {
         try await requireSelectedFolder().topStream(index, lines: lines, sink: sink)
     }
@@ -811,7 +835,7 @@ public actor AsyncPop3Folder: AsyncMailFolder {
     /// - Throws: An error if the command fails.
     public func retrStream(
         _ index: Int,
-        sink: @Sendable ([UInt8]) async throws -> Void
+        sink: @Sendable @escaping ([UInt8]) async throws -> Void
     ) async throws {
         try await session.retrStream(index, sink: sink)
     }
@@ -870,7 +894,7 @@ public actor AsyncPop3Folder: AsyncMailFolder {
     public func topStream(
         _ index: Int,
         lines: Int,
-        sink: @Sendable ([UInt8]) async throws -> Void
+        sink: @Sendable @escaping ([UInt8]) async throws -> Void
     ) async throws {
         try await session.topStream(index, lines: lines, sink: sink)
     }

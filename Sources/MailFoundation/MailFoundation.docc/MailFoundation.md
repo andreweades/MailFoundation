@@ -20,7 +20,7 @@ The library is designed for both synchronous and asynchronous usage, with native
 ### Key Features
 
 - **Complete Protocol Support** - Implements core protocols plus modern extensions
-- **Flexible Authentication** - PLAIN, LOGIN, CRAM-MD5, XOAUTH2, and more
+- **Strong Authentication** - SCRAM-SHA-512/256/1, GSSAPI, NTLM, CRAM-MD5, XOAUTH2, and more
 - **TLS/SSL Security** - STARTTLS and implicit TLS with certificate validation
 - **Proxy Support** - HTTP CONNECT, SOCKS4, SOCKS4a, and SOCKS5 proxies
 - **Modern Swift APIs** - Both sync and async APIs with Sendable types
@@ -114,3 +114,14 @@ MailFoundation follows a layered architecture:
 - ``TlsConfiguration``
 - ``ProxySettings``
 - ``ConnectionPool``
+
+### Authentication
+
+- ``ImapSasl``
+- ``SmtpSasl``
+- ``Pop3Sasl``
+- ``ScramContext``
+- ``ScramHashAlgorithm``
+- ``ScramError``
+- ``GssapiContext``
+- ``GssapiError``
