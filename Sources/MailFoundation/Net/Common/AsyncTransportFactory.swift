@@ -8,6 +8,7 @@ public enum AsyncTransportBackend: Sendable {
     case network
     case socket
     case asyncStream
+    case openssl
 }
 
 public enum AsyncTransportFactoryError: Error, Sendable {
@@ -32,6 +33,12 @@ public enum AsyncTransportFactory {
             #endif
         case .asyncStream:
             return AsyncStreamTransport()
+        case .openssl:
+            #if canImport(COpenSSL)
+            return OpenSSLTransport(host: host, port: port)
+            #else
+            throw AsyncTransportFactoryError.backendUnavailable
+            #endif
         }
     }
 }

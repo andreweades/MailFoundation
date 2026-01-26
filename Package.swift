@@ -19,12 +19,19 @@ let package = Package(
         .package(path: "../a/MimeFoundation")
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
+        .systemLibrary(
+            name: "COpenSSL",
+            pkgConfig: "openssl",
+            providers: [
+                .brew(["openssl@3"]),
+                .apt(["libssl-dev"])
+            ]
+        ),
         .target(
             name: "MailFoundation",
             dependencies: [
-                "MimeFoundation"
+                "MimeFoundation",
+                "COpenSSL",
             ]
         ),
         .testTarget(

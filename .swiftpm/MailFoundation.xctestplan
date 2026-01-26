@@ -1,0 +1,25 @@
+{
+  "configurations" : [
+    {
+      "id" : "77D18070-D79A-4655-9F3C-2E4CBE6F5E32",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "MailFoundationTests",
+        "name" : "MailFoundationTests"
+      }
+    }
+  ],
+  "version" : 1
+}
