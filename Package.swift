@@ -7,6 +7,7 @@ let package = Package(
     name: "MailFoundation",
     platforms: [
         .macOS(.v10_15),
+        .iOS(.v13),
         .visionOS(.v1)
     ],
     products: [
@@ -17,6 +18,7 @@ let package = Package(
         ),
     ],
     dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.1.0"),
         .package(url: "https://github.com/migueldeicaza/MimeFoundation", branch: "main")
     ],
     targets: [
