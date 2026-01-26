@@ -55,6 +55,40 @@ func asyncPop3SessionApopAuth() async throws {
 }
 
 @available(macOS 10.15, iOS 13.0, *)
+@Test("Async POP3 session APOP authentication with password")
+func asyncPop3SessionApopPasswordAuth() async throws {
+    #if canImport(CryptoKit)
+    let challenge = "<1896.697170952@dbc.mtview.ca.us>"
+    let transport = AsyncStreamTransport()
+    let session = AsyncPop3Session(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("+OK POP3 server ready \(challenge)\r\n".utf8))
+    _ = try await connectTask.value
+
+    let apopTask = Task { try await session.authenticateApop(user: "bob", password: "tanstaaf") }
+    await transport.yieldIncoming(Array("+OK maildrop ready\r\n".utf8))
+    let response = try await apopTask.value
+    #expect(response?.isSuccess == true)
+
+    let sent = await transport.sentSnapshot()
+    let sentText = sent.map { String(decoding: $0, as: UTF8.self) }.joined()
+    #expect(sentText.contains("APOP bob c4c9334bac560ecc979e58001b3e22fb\r\n"))
+    #else
+    let transport = AsyncStreamTransport()
+    let session = AsyncPop3Session(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("+OK POP3 server ready <1896.697170952@dbc.mtview.ca.us>\r\n".utf8))
+    _ = try await connectTask.value
+
+    await #expect(throws: SessionError.pop3Error(message: "APOP digest is not available.")) {
+        _ = try await session.authenticateApop(user: "bob", password: "tanstaaf")
+    }
+    #endif
+}
+
+@available(macOS 10.15, iOS 13.0, *)
 @Test("Async POP3 session APOP failure")
 func asyncPop3SessionApopFailure() async throws {
     let transport = AsyncStreamTransport()

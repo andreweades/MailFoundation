@@ -8,6 +8,7 @@ public final class Pop3Session {
     private let client: Pop3Client
     private let transport: Transport
     private let maxReads: Int
+    private var lastGreeting: Pop3Response?
 
     public init(transport: Transport, protocolLogger: ProtocolLoggerType = NullProtocolLogger(), maxReads: Int = 10) {
         self.transport = transport
@@ -24,12 +25,14 @@ public final class Pop3Session {
         guard greeting.isSuccess else {
             throw pop3CommandError(from: greeting)
         }
+        lastGreeting = greeting
         return greeting
     }
 
     public func disconnect() {
         _ = client.send(.quit)
         transport.close()
+        lastGreeting = nil
     }
 
     public func authenticate(user: String, password: String) throws -> (user: Pop3Response, pass: Pop3Response) {
@@ -82,6 +85,21 @@ public final class Pop3Session {
             throw pop3CommandError(from: response)
         }
         return response
+    }
+
+    public func authenticateApop(
+        user: String,
+        password: String,
+        greeting: Pop3Response? = nil
+    ) throws -> Pop3Response {
+        let challenge = (greeting ?? lastGreeting)?.apopChallenge
+        guard let challenge else {
+            throw SessionError.pop3Error(message: "APOP challenge is not available.")
+        }
+        guard let digest = Pop3Apop.digest(challenge: challenge, password: password) else {
+            throw SessionError.pop3Error(message: "APOP digest is not available.")
+        }
+        return try apop(user: user, digest: digest)
     }
 
     public func auth(mechanism: String, initialResponse: String? = nil) throws -> Pop3Response {

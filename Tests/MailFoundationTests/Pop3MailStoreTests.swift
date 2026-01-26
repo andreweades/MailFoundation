@@ -175,6 +175,54 @@ func pop3StoreCommandErrorResponse() throws {
     }
 }
 
+@Test("POP3 store APOP authentication with password")
+func pop3StoreApopPasswordAuth() throws {
+    #if canImport(CryptoKit)
+    let challenge = "<1896.697170952@dbc.mtview.ca.us>"
+    let transport = TestTransport(incoming: [
+        Array("+OK Ready \(challenge)\r\n".utf8),
+        Array("+OK Maildrop ready\r\n".utf8)
+    ])
+    let store = Pop3MailStore(transport: transport)
+    _ = try store.connect()
+    let response = try store.authenticateApop(user: "bob", password: "tanstaaf")
+    #expect(response.isSuccess)
+
+    let sentText = transport.written
+        .map { String(decoding: $0, as: UTF8.self) }
+        .joined()
+    #expect(sentText.contains("APOP bob c4c9334bac560ecc979e58001b3e22fb\r\n"))
+    #else
+    let transport = TestTransport(incoming: [
+        Array("+OK Ready <1896.697170952@dbc.mtview.ca.us>\r\n".utf8)
+    ])
+    let store = Pop3MailStore(transport: transport)
+    _ = try store.connect()
+    #expect(throws: SessionError.pop3Error(message: "APOP digest is not available.")) {
+        _ = try store.authenticateApop(user: "bob", password: "tanstaaf")
+    }
+    #endif
+}
+
+@Test("POP3 store APOP failure")
+func pop3StoreApopFailure() throws {
+    let transport = TestTransport(incoming: [
+        Array("+OK Ready\r\n".utf8),
+        Array("-ERR Authentication failed\r\n".utf8)
+    ])
+    let store = Pop3MailStore(transport: transport)
+    _ = try store.connect()
+
+    do {
+        _ = try store.authenticateApop(user: "user", digest: "bad")
+        #expect(Bool(false))
+    } catch let error as Pop3CommandError {
+        #expect(error.statusText == "Authentication failed")
+    } catch {
+        #expect(Bool(false))
+    }
+}
+
 @Test("POP3 store SASL XOAUTH2 unsupported via CAPA")
 func pop3StoreSaslXoauth2Unsupported() throws {
     let transport = TestTransport(incoming: [
@@ -386,6 +434,40 @@ func asyncPop3StoreCommandErrorResponse() async throws {
             #expect(Bool(false))
         }
     }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async POP3 store APOP authentication with password")
+func asyncPop3StoreApopPasswordAuth() async throws {
+    #if canImport(CryptoKit)
+    let challenge = "<1896.697170952@dbc.mtview.ca.us>"
+    let transport = AsyncStreamTransport()
+    let store = AsyncPop3MailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("+OK Ready \(challenge)\r\n".utf8))
+    _ = try await connectTask.value
+
+    let apopTask = Task { try await store.authenticateApop(user: "bob", password: "tanstaaf") }
+    await transport.yieldIncoming(Array("+OK Maildrop ready\r\n".utf8))
+    let response = try await apopTask.value
+    #expect(response?.isSuccess == true)
+
+    let sent = await transport.sentSnapshot()
+    let sentText = sent.map { String(decoding: $0, as: UTF8.self) }.joined()
+    #expect(sentText.contains("APOP bob c4c9334bac560ecc979e58001b3e22fb\r\n"))
+    #else
+    let transport = AsyncStreamTransport()
+    let store = AsyncPop3MailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("+OK Ready <1896.697170952@dbc.mtview.ca.us>\r\n".utf8))
+    _ = try await connectTask.value
+
+    await #expect(throws: SessionError.pop3Error(message: "APOP digest is not available.")) {
+        _ = try await store.authenticateApop(user: "bob", password: "tanstaaf")
+    }
+    #endif
 }
 
 @available(macOS 10.15, iOS 13.0, *)

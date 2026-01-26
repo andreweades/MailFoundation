@@ -26,6 +26,35 @@ func syncPop3SessionLastAndRawBytes() throws {
     #expect(topBytes == rawLine)
 }
 
+@Test("Sync POP3 session APOP authentication with password")
+func syncPop3SessionApopPasswordAuth() throws {
+    #if canImport(CryptoKit)
+    let challenge = "<1896.697170952@dbc.mtview.ca.us>"
+    let transport = TestTransport(incoming: [
+        Array("+OK POP3 server ready \(challenge)\r\n".utf8),
+        Array("+OK Maildrop ready\r\n".utf8)
+    ])
+    let session = Pop3Session(transport: transport, maxReads: 2)
+    _ = try session.connect()
+    let response = try session.authenticateApop(user: "bob", password: "tanstaaf")
+    #expect(response.isSuccess)
+
+    let sentText = transport.written
+        .map { String(decoding: $0, as: UTF8.self) }
+        .joined()
+    #expect(sentText.contains("APOP bob c4c9334bac560ecc979e58001b3e22fb\r\n"))
+    #else
+    let transport = TestTransport(incoming: [
+        Array("+OK POP3 server ready <1896.697170952@dbc.mtview.ca.us>\r\n".utf8)
+    ])
+    let session = Pop3Session(transport: transport, maxReads: 1)
+    _ = try session.connect()
+    #expect(throws: SessionError.pop3Error(message: "APOP digest is not available.")) {
+        _ = try session.authenticateApop(user: "bob", password: "tanstaaf")
+    }
+    #endif
+}
+
 @Test("Sync POP3 session streaming RETR/TOP")
 func syncPop3SessionStreamedData() throws {
     let retrChunk = Array("+OK\r\n".utf8)

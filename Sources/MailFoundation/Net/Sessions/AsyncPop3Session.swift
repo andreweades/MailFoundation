@@ -11,6 +11,7 @@ public let defaultPop3TimeoutMs = 120_000
 public actor AsyncPop3Session {
     private let client: AsyncPop3Client
     private let transport: AsyncTransport
+    private var lastGreeting: Pop3Response?
 
     /// The timeout for network operations in milliseconds.
     ///
@@ -44,12 +45,17 @@ public actor AsyncPop3Session {
     @discardableResult
     public func connect() async throws -> Pop3Response? {
         try await client.start()
-        return await client.waitForResponse()
+        let greeting = await client.waitForResponse()
+        if let greeting, greeting.isSuccess {
+            lastGreeting = greeting
+        }
+        return greeting
     }
 
     public func disconnect() async {
         _ = try? await client.send(.quit)
         await client.stop()
+        lastGreeting = nil
     }
 
     public func capability() async throws -> Pop3Capabilities? {
@@ -69,6 +75,21 @@ public actor AsyncPop3Session {
             throw pop3CommandError(from: response)
         }
         return response
+    }
+
+    public func authenticateApop(
+        user: String,
+        password: String,
+        greeting: Pop3Response? = nil
+    ) async throws -> Pop3Response? {
+        let challenge = (greeting ?? lastGreeting)?.apopChallenge
+        guard let challenge else {
+            throw SessionError.pop3Error(message: "APOP challenge is not available.")
+        }
+        guard let digest = Pop3Apop.digest(challenge: challenge, password: password) else {
+            throw SessionError.pop3Error(message: "APOP digest is not available.")
+        }
+        return try await apop(user: user, digest: digest)
     }
 
     public func auth(mechanism: String, initialResponse: String? = nil) async throws -> Pop3Response? {

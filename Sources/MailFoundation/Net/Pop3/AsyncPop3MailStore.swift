@@ -85,6 +85,13 @@ public actor AsyncPop3MailStore: AsyncMailStore {
         return response
     }
 
+    public func authenticateApop(user: String, password: String) async throws -> Pop3Response? {
+        let response = try await session.authenticateApop(user: user, password: password)
+        await inbox.attachStore(self)
+        _ = try await inbox.open(.readOnly)
+        return response
+    }
+
     public func authenticateSasl(
         user: String,
         password: String,
