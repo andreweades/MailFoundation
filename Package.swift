@@ -6,7 +6,8 @@ import PackageDescription
 let package = Package(
     name: "MailFoundation",
     platforms: [
-        .macOS(.v10_15)
+        .macOS(.v10_15),
+        .visionOS(.v1)
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
@@ -31,7 +32,7 @@ let package = Package(
             name: "MailFoundation",
             dependencies: [
                 "MimeFoundation",
-                "COpenSSL",
+                .target(name: "COpenSSL", condition: .when(platforms: [.macOS, .linux]))
             ]
         ),
         .testTarget(

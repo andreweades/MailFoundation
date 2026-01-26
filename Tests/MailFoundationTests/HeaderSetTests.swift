@@ -8,8 +8,7 @@ func headerSetValidatesFieldNames() throws {
         "X-Custom-Header",
         "X_Alt",
         "List-ID",
-        "DKIM-Signature",
-        "Nämé"
+        "DKIM-Signature"
     ]
     for field in valid {
         #expect(HeaderSet.isValidFieldName(field) == true)
@@ -19,7 +18,8 @@ func headerSetValidatesFieldNames() throws {
         "",
         "Subject:",
         "Sub ject",
-        "Name\n"
+        "Name\n",
+        "Nämé"  // Non-ASCII characters not allowed per RFC 5322
     ]
     for field in invalid {
         #expect(HeaderSet.isValidFieldName(field) == false)

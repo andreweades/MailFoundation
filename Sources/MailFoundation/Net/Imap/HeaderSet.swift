@@ -197,11 +197,13 @@ public struct HeaderSet: Sendable, Equatable, Sequence {
     private static func isValid(_ header: String) -> Bool {
         guard !header.isEmpty else { return false }
         for scalar in header.unicodeScalars {
-            if scalar.value < 127 {
-                let byte = UInt8(scalar.value)
-                if !isAsciiAtom(byte) {
-                    return false
-                }
+            // RFC 5322: field names must be printable US-ASCII (33-126) excluding ":"
+            guard scalar.value < 127 else {
+                return false // Non-ASCII characters are not allowed
+            }
+            let byte = UInt8(scalar.value)
+            if !isAsciiAtom(byte) {
+                return false
             }
         }
         return true
