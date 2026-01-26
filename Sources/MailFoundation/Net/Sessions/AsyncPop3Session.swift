@@ -67,7 +67,13 @@ public actor AsyncPop3Session {
 
     public func auth(mechanism: String, initialResponse: String? = nil) async throws -> Pop3Response? {
         _ = try await client.send(.auth(mechanism, initialResponse: initialResponse))
-        return await client.waitForResponse()
+        guard let response = await client.waitForResponse() else {
+            throw SessionError.timeout
+        }
+        guard response.isSuccess else {
+            throw pop3CommandError(from: response)
+        }
+        return response
     }
 
     public func auth(

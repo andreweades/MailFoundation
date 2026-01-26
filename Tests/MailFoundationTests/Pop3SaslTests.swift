@@ -351,9 +351,15 @@ func asyncPop3SaslXoauth2Failure() async throws {
         try await session.authenticateXoauth2(user: "user@example.com", accessToken: "token")
     }
     await transport.yieldIncoming(Array("-ERR Authentication failed\r\n".utf8))
-    let response = try await authTask.value
-    #expect(response?.isSuccess == false)
-    #expect(response?.message == "Authentication failed")
+
+    do {
+        _ = try await authTask.value
+        #expect(Bool(false))
+    } catch let error as Pop3CommandError {
+        #expect(error.statusText == "Authentication failed")
+    } catch {
+        #expect(Bool(false))
+    }
 }
 
 @available(macOS 10.15, iOS 13.0, *)
