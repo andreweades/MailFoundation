@@ -44,6 +44,8 @@ import Glibc
 /// mechanisms. Choose the appropriate type based on your proxy server's
 /// support and your requirements.
 ///
+/// For a detailed guide on using proxies with MailFoundation, see <doc:ProxySupport>.
+///
 /// - Note: Ported from MailKit's `ProxyClient` implementations.
 public enum ProxyType: Sendable, Equatable {
     /// HTTP CONNECT proxy (HTTP tunneling).
@@ -77,6 +79,8 @@ public enum ProxyType: Sendable, Equatable {
 ///
 /// `ProxySettings` contains all the information needed to establish
 /// a connection through an HTTP CONNECT, SOCKS4, or SOCKS5 proxy.
+///
+/// For a detailed guide and examples, see <doc:ProxySupport>.
 ///
 /// ## Basic Configuration
 ///

@@ -125,3 +125,7 @@ MailFoundation follows a layered architecture:
 - ``ScramError``
 - ``GssapiContext``
 - ``GssapiError``
+
+### Proxy Support
+
+- <doc:ProxySupport>

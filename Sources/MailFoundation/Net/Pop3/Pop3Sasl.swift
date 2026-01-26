@@ -132,6 +132,43 @@ public struct Pop3Authentication: Sendable {
 ///
 /// - ``Pop3Authentication`` for the result type
 /// - ``Pop3Capabilities/saslMechanisms()`` for discovering supported mechanisms
+// MARK: - Adapter
+
+extension Pop3Authentication {
+    /// Creates a POP3 authentication configuration from a unified SASL mechanism.
+    ///
+    /// - Parameter mechanism: The SASL mechanism to adapt.
+    public init(mechanism: SaslMechanism) {
+        self.mechanism = mechanism.name
+        
+        var initial: String? = nil
+        if mechanism.supportsInitialResponse {
+            if let data = try? mechanism.initialResponse() {
+                initial = Data(data).base64EncodedString()
+            }
+        }
+        self.initialResponse = initial
+        
+        self.responder = { challengeBase64 in
+            let trimmed = challengeBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Some servers send empty challenge as "" or "+"
+            let challengeData: [UInt8]
+            if trimmed.isEmpty || trimmed == "+" {
+                challengeData = []
+            } else if let data = Data(base64Encoded: trimmed) {
+                challengeData = Array(data)
+            } else {
+                // Fallback: treat as raw text if not base64? 
+                // Standard says Base64.
+                challengeData = Array(trimmed.utf8) 
+            }
+            
+            let responseBytes = try mechanism.challenge(challengeData)
+            return Data(responseBytes).base64EncodedString()
+        }
+    }
+}
+
 public enum Pop3Sasl {
     /// Encodes a string as base64.
     ///
@@ -156,12 +193,7 @@ public enum Pop3Sasl {
         password: String,
         authorizationId: String? = nil
     ) -> Pop3Authentication {
-        let authz = authorizationId ?? ""
-        let payload = "\(authz)\u{0}\(username)\u{0}\(password)"
-        return Pop3Authentication(
-            mechanism: "PLAIN",
-            initialResponse: base64(payload)
-        )
+        Pop3Authentication(mechanism: PlainSaslMechanism(username: username, password: password, authorizationId: authorizationId))
     }
 
     /// Creates a LOGIN SASL authentication configuration.
@@ -179,6 +211,19 @@ public enum Pop3Sasl {
         password: String,
         useInitialResponse: Bool = false
     ) -> Pop3Authentication {
+        // Note: useInitialResponse logic is internal to LoginSaslMechanism usually,
+        // but our simple implementation assumes it supports it.
+        // The original implementation had custom logic.
+        // For now, let's keep the original implementation for LOGIN to ensure behavior match,
+        // OR update LoginSaslMechanism to support configuration.
+        // Let's use the adapter but we might lose 'useInitialResponse' fine-tuning 
+        // if LoginSaslMechanism always returns initial response.
+        // LoginSaslMechanism as I wrote it returns username as initial response.
+        // If useInitialResponse is false, we should return nil?
+        
+        // Let's stick to the original implementation for LOGIN for now to be safe, 
+        // or update SaslMechanism.
+        
         let initial = useInitialResponse ? base64(username) : nil
         let responder: @Sendable (String) throws -> String = { challenge in
             let trimmed = challenge.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -256,11 +301,7 @@ public enum Pop3Sasl {
     /// )
     /// ```
     public static func xoauth2(username: String, accessToken: String) -> Pop3Authentication {
-        let payload = "user=\(username)\u{01}auth=Bearer \(accessToken)\u{01}\u{01}"
-        return Pop3Authentication(
-            mechanism: "XOAUTH2",
-            initialResponse: base64(payload)
-        )
+        Pop3Authentication(mechanism: XOAuth2SaslMechanism(username: username, accessToken: accessToken))
     }
 
     /// Creates a SCRAM-SHA-1 SASL authentication configuration.

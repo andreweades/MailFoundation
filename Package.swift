@@ -17,7 +17,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(path: "../a/MimeFoundation")
+        .package(path: "../MimeFoundation")
     ],
     targets: [
         .systemLibrary(
