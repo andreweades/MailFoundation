@@ -42,6 +42,23 @@ public final class Pop3MailStore: MailServiceBase<Pop3Response>, MailStore {
         return responses
     }
 
+    public func authenticateSasl(
+        user: String,
+        password: String,
+        capabilities: Pop3Capabilities? = nil,
+        mechanisms: [String]? = nil
+    ) throws -> Pop3Response {
+        let response = try session.authenticateSasl(
+            user: user,
+            password: password,
+            capabilities: capabilities,
+            mechanisms: mechanisms
+        )
+        updateState(.authenticated)
+        _ = try inbox.open(.readOnly)
+        return response
+    }
+
     public override func disconnect() {
         inbox.close()
         session.disconnect()

@@ -225,6 +225,22 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
         try session.setMetadata(mailbox: mailbox, entries: entries)
     }
 
+    public func getAnnotation(
+        _ mailbox: String,
+        entries: [String],
+        attributes: [String]
+    ) throws -> ImapAnnotationResult? {
+        try session.getAnnotation(mailbox: mailbox, entries: entries, attributes: attributes)
+    }
+
+    public func setAnnotation(
+        _ mailbox: String,
+        entry: String,
+        attributes: [ImapAnnotationAttribute]
+    ) throws -> ImapResponse {
+        try session.setAnnotation(mailbox: mailbox, entry: entry, attributes: attributes)
+    }
+
     public func fetchSummaries(_ set: String, request: FetchRequest, previewLength: Int = 512) throws -> [MessageSummary] {
         try requireSelectedFolder().fetchSummaries(set, request: request, previewLength: previewLength)
     }
@@ -478,5 +494,13 @@ public final class ImapFolder: MailFolderBase {
 
     public func setMetadata(entries: [ImapMetadataEntry]) throws -> ImapResponse {
         try session.setMetadata(mailbox: mailbox.name, entries: entries)
+    }
+
+    public func getAnnotation(entries: [String], attributes: [String]) throws -> ImapAnnotationResult? {
+        try session.getAnnotation(mailbox: mailbox.name, entries: entries, attributes: attributes)
+    }
+
+    public func setAnnotation(entry: String, attributes: [ImapAnnotationAttribute]) throws -> ImapResponse {
+        try session.setAnnotation(mailbox: mailbox.name, entry: entry, attributes: attributes)
     }
 }

@@ -32,6 +32,8 @@ public enum ImapCommandKind: Sendable {
     case myRights(String)
     case getMetadata(String, options: ImapMetadataOptions?, entries: [String])
     case setMetadata(String, entries: [ImapMetadataEntry])
+    case getAnnotation(String, entries: [String], attributes: [String])
+    case setAnnotation(String, entry: String, attributes: [ImapAnnotationAttribute])
     case id(String)
     case fetch(String, String)
     case store(String, String)
@@ -115,6 +117,14 @@ public enum ImapCommandKind: Sendable {
         case let .setMetadata(mailbox, entries):
             let entryList = ImapMetadata.formatEntryPairs(entries)
             return ImapCommand(tag: tag, name: "SETMETADATA", arguments: "\(mailbox) \(entryList)")
+        case let .getAnnotation(mailbox, entries, attributes):
+            let entryList = ImapAnnotation.formatEntryList(entries)
+            let attributeList = ImapAnnotation.formatAttributeList(attributes)
+            return ImapCommand(tag: tag, name: "GETANNOTATION", arguments: "\(mailbox) \(entryList) \(attributeList)")
+        case let .setAnnotation(mailbox, entry, attributes):
+            let attributeList = ImapAnnotation.formatAttributes(attributes)
+            let entryName = ImapMetadata.atomOrQuoted(entry)
+            return ImapCommand(tag: tag, name: "SETANNOTATION", arguments: "\(mailbox) \(entryName) \(attributeList)")
         case let .id(arguments):
             return ImapCommand(tag: tag, name: "ID", arguments: arguments)
         case let .fetch(set, items):

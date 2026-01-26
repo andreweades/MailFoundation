@@ -78,6 +78,23 @@ public actor AsyncPop3MailStore: AsyncMailStore {
         return responses
     }
 
+    public func authenticateSasl(
+        user: String,
+        password: String,
+        capabilities: Pop3Capabilities? = nil,
+        mechanisms: [String]? = nil
+    ) async throws -> Pop3Response? {
+        let response = try await session.authenticateSasl(
+            user: user,
+            password: password,
+            capabilities: capabilities,
+            mechanisms: mechanisms
+        )
+        await inbox.attachStore(self)
+        _ = try await inbox.open(.readOnly)
+        return response
+    }
+
     public func getFolder(_ path: String) async throws -> AsyncPop3Folder {
         guard path.caseInsensitiveCompare("INBOX") == .orderedSame else {
             throw Pop3FolderError.unsupportedFolder

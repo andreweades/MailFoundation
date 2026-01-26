@@ -306,6 +306,34 @@ public actor AsyncImapMailStore: AsyncMailStore {
         try await session.setMetadata(mailbox: mailbox, entries: entries, maxEmptyReads: maxEmptyReads)
     }
 
+    public func getAnnotation(
+        _ mailbox: String,
+        entries: [String],
+        attributes: [String],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapAnnotationResult? {
+        try await session.getAnnotation(
+            mailbox: mailbox,
+            entries: entries,
+            attributes: attributes,
+            maxEmptyReads: maxEmptyReads
+        )
+    }
+
+    public func setAnnotation(
+        _ mailbox: String,
+        entry: String,
+        attributes: [ImapAnnotationAttribute],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        try await session.setAnnotation(
+            mailbox: mailbox,
+            entry: entry,
+            attributes: attributes,
+            maxEmptyReads: maxEmptyReads
+        )
+    }
+
     public func fetchSummaries(
         _ set: String,
         request: FetchRequest,
@@ -368,6 +396,24 @@ public actor AsyncImapMailStore: AsyncMailStore {
     ) async throws -> ImapResponse {
         let folder = try requireSelectedFolder()
         return try await folder.setMetadata(entries: entries, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func getAnnotation(
+        entries: [String],
+        attributes: [String],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapAnnotationResult? {
+        let folder = try requireSelectedFolder()
+        return try await folder.getAnnotation(entries: entries, attributes: attributes, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func setAnnotation(
+        entry: String,
+        attributes: [ImapAnnotationAttribute],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        let folder = try requireSelectedFolder()
+        return try await folder.setAnnotation(entry: entry, attributes: attributes, maxEmptyReads: maxEmptyReads)
     }
 
     public func searchIdSet(
@@ -701,6 +747,32 @@ public actor AsyncImapFolder: AsyncMailFolder {
         maxEmptyReads: Int = 10
     ) async throws -> ImapResponse {
         try await session.setMetadata(mailbox: mailbox.name, entries: entries, maxEmptyReads: maxEmptyReads)
+    }
+
+    public func getAnnotation(
+        entries: [String],
+        attributes: [String],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapAnnotationResult? {
+        try await session.getAnnotation(
+            mailbox: mailbox.name,
+            entries: entries,
+            attributes: attributes,
+            maxEmptyReads: maxEmptyReads
+        )
+    }
+
+    public func setAnnotation(
+        entry: String,
+        attributes: [ImapAnnotationAttribute],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        try await session.setAnnotation(
+            mailbox: mailbox.name,
+            entry: entry,
+            attributes: attributes,
+            maxEmptyReads: maxEmptyReads
+        )
     }
 
     internal func updateOpenState(_ access: FolderAccess?) async {

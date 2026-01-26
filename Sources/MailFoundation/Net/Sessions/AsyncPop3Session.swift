@@ -95,6 +95,47 @@ public actor AsyncPop3Session {
         return response
     }
 
+    public func authenticate(_ authentication: Pop3Authentication) async throws -> Pop3Response? {
+        if let responder = authentication.responder {
+            return try await auth(
+                mechanism: authentication.mechanism,
+                initialResponse: authentication.initialResponse,
+                responder: responder
+            )
+        }
+        return try await auth(
+            mechanism: authentication.mechanism,
+            initialResponse: authentication.initialResponse
+        )
+    }
+
+    public func authenticateSasl(
+        user: String,
+        password: String,
+        capabilities: Pop3Capabilities? = nil,
+        mechanisms: [String]? = nil
+    ) async throws -> Pop3Response? {
+        let availableMechanisms: [String]
+        if let mechanisms {
+            availableMechanisms = mechanisms
+        } else if let capabilities {
+            availableMechanisms = capabilities.saslMechanisms()
+        } else if let fetched = try await capability() {
+            availableMechanisms = fetched.saslMechanisms()
+        } else {
+            availableMechanisms = []
+        }
+
+        guard let authentication = Pop3Sasl.chooseAuthentication(
+            username: user,
+            password: password,
+            mechanisms: availableMechanisms
+        ) else {
+            throw SessionError.pop3Error(message: "No supported SASL mechanisms.")
+        }
+        return try await authenticate(authentication)
+    }
+
     public func noop() async throws -> Pop3Response? {
         try await ensureAuthenticated()
         _ = try await client.send(.noop)

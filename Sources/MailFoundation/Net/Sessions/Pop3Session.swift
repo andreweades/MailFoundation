@@ -123,6 +123,45 @@ public final class Pop3Session {
         return response
     }
 
+    public func authenticate(_ authentication: Pop3Authentication) throws -> Pop3Response {
+        if let responder = authentication.responder {
+            return try auth(
+                mechanism: authentication.mechanism,
+                initialResponse: authentication.initialResponse,
+                responder: responder
+            )
+        }
+        return try auth(
+            mechanism: authentication.mechanism,
+            initialResponse: authentication.initialResponse
+        )
+    }
+
+    public func authenticateSasl(
+        user: String,
+        password: String,
+        capabilities: Pop3Capabilities? = nil,
+        mechanisms: [String]? = nil
+    ) throws -> Pop3Response {
+        let availableMechanisms: [String]
+        if let mechanisms {
+            availableMechanisms = mechanisms
+        } else if let capabilities {
+            availableMechanisms = capabilities.saslMechanisms()
+        } else {
+            availableMechanisms = try capability().saslMechanisms()
+        }
+
+        guard let authentication = Pop3Sasl.chooseAuthentication(
+            username: user,
+            password: password,
+            mechanisms: availableMechanisms
+        ) else {
+            throw SessionError.pop3Error(message: "No supported SASL mechanisms.")
+        }
+        return try authenticate(authentication)
+    }
+
     public func noop() throws -> Pop3Response {
         try ensureAuthenticated()
         _ = client.send(.noop)

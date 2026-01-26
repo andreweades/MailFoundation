@@ -926,6 +926,75 @@ public actor AsyncImapSession {
         throw SessionError.timeout
     }
 
+    public func getAnnotation(
+        mailbox: String,
+        entries: [String],
+        attributes: [String],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapAnnotationResult? {
+        try await ensureAuthenticated()
+        let command = try await client.send(.getAnnotation(mailbox, entries: entries, attributes: attributes))
+        var emptyReads = 0
+        var mailboxName: String?
+        var entriesResult: [ImapAnnotationEntry] = []
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let parsed = ImapAnnotationResponse.parse(message) {
+                    mailboxName = parsed.mailbox
+                    entriesResult.append(parsed.entry)
+                }
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        guard let mailboxName else { return nil }
+                        return ImapAnnotationResult(mailbox: mailboxName, entries: entriesResult)
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    public func setAnnotation(
+        mailbox: String,
+        entry: String,
+        attributes: [ImapAnnotationAttribute],
+        maxEmptyReads: Int = 10
+    ) async throws -> ImapResponse {
+        try await ensureAuthenticated()
+        let command = try await client.send(.setAnnotation(mailbox, entry: entry, attributes: attributes))
+        var emptyReads = 0
+
+        while emptyReads < maxEmptyReads {
+            let messages = await client.nextMessages()
+            if messages.isEmpty {
+                emptyReads += 1
+                continue
+            }
+            emptyReads = 0
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let tagged = message.response, case let .tagged(tag) = tagged.kind, tag == command.tag {
+                    if tagged.isOk {
+                        return tagged
+                    }
+                    throw SessionError.imapError(status: tagged.status, text: tagged.text)
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
     public func id(_ parameters: [String: String?]? = nil, maxEmptyReads: Int = 10) async throws -> ImapIdResponse? {
         let command = try await client.send(.id(ImapId.buildArguments(parameters)))
         var emptyReads = 0

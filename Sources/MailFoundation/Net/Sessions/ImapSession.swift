@@ -513,6 +513,61 @@ public final class ImapSession {
         return response
     }
 
+    public func getAnnotation(
+        mailbox: String,
+        entries: [String],
+        attributes: [String]
+    ) throws -> ImapAnnotationResult? {
+        try ensureAuthenticated()
+        let command = client.send(.getAnnotation(mailbox, entries: entries, attributes: attributes))
+        try ensureWrite()
+        var mailboxName: String?
+        var entriesResult: [ImapAnnotationEntry] = []
+        var reads = 0
+
+        while reads < maxReads {
+            let messages = client.receiveWithLiterals()
+            if messages.isEmpty {
+                reads += 1
+                continue
+            }
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let parsed = ImapAnnotationResponse.parse(message) {
+                    mailboxName = parsed.mailbox
+                    entriesResult.append(parsed.entry)
+                }
+                if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                    guard response.isOk else {
+                        throw SessionError.imapError(status: response.status, text: response.text)
+                    }
+                    guard let mailboxName else {
+                        return nil
+                    }
+                    return ImapAnnotationResult(mailbox: mailboxName, entries: entriesResult)
+                }
+            }
+        }
+        throw SessionError.timeout
+    }
+
+    public func setAnnotation(
+        mailbox: String,
+        entry: String,
+        attributes: [ImapAnnotationAttribute]
+    ) throws -> ImapResponse {
+        try ensureAuthenticated()
+        let command = client.send(.setAnnotation(mailbox, entry: entry, attributes: attributes))
+        try ensureWrite()
+        guard let response = client.waitForTagged(command.tag, maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+        guard response.isOk else {
+            throw SessionError.imapError(status: response.status, text: response.text)
+        }
+        return response
+    }
+
     public func list(reference: String, mailbox: String) throws -> [ImapMailbox] {
         let responses = try listResponses(reference: reference, mailbox: mailbox)
         return responses.map { ImapMailbox(kind: $0.kind, name: $0.name, delimiter: $0.delimiter, attributes: $0.attributes) }
