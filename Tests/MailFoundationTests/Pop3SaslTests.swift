@@ -113,6 +113,50 @@ func syncPop3SaslXoauth2() throws {
     #expect(sent == expected)
 }
 
+@Test("Sync POP3 SASL CRAM-MD5 failure response")
+func syncPop3SaslCramMd5Failure() throws {
+    #if canImport(CryptoKit)
+    let challenge = "PDE4OTYuNjk3MTcwOTUyQHBvc3RvZmZpY2UucmVzdG9uLm1jaS5uZXQ+"
+    let transport = TestTransport(incoming: [
+        Array("+OK Ready\r\n".utf8),
+        Array("+ \(challenge)\r\n".utf8),
+        Array("-ERR Authentication failed\r\n".utf8)
+    ])
+    let session = Pop3Session(transport: transport, maxReads: 3)
+    _ = try session.connect()
+
+    do {
+        _ = try session.authenticateCramMd5(user: "tim", password: "tanstaaftanstaaf")
+        #expect(Bool(false))
+    } catch let error as Pop3CommandError {
+        #expect(error.statusText == "Authentication failed")
+    } catch {
+        #expect(Bool(false))
+    }
+    #else
+    return
+    #endif
+}
+
+@Test("Sync POP3 SASL XOAUTH2 failure response")
+func syncPop3SaslXoauth2Failure() throws {
+    let transport = TestTransport(incoming: [
+        Array("+OK Ready\r\n".utf8),
+        Array("-ERR Authentication failed\r\n".utf8)
+    ])
+    let session = Pop3Session(transport: transport, maxReads: 2)
+    _ = try session.connect()
+
+    do {
+        _ = try session.authenticateXoauth2(user: "user@example.com", accessToken: "token")
+        #expect(Bool(false))
+    } catch let error as Pop3CommandError {
+        #expect(error.statusText == "Authentication failed")
+    } catch {
+        #expect(Bool(false))
+    }
+}
+
 @Test("Sync POP3 SASL CRAM-MD5 via CAPA")
 func syncPop3SaslCramMd5ViaCapa() throws {
     #if canImport(CryptoKit)
@@ -262,6 +306,54 @@ func asyncPop3SaslXoauth2() async throws {
     let expected = "AUTH XOAUTH2 \(Pop3Sasl.xoauth2(username: "user@example.com", accessToken: "token").initialResponse ?? "")\r\n"
     let serialized = String(decoding: sent.last ?? [], as: UTF8.self)
     #expect(serialized == expected)
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async POP3 SASL CRAM-MD5 failure response")
+func asyncPop3SaslCramMd5Failure() async throws {
+    #if canImport(CryptoKit)
+    let challenge = "PDE4OTYuNjk3MTcwOTUyQHBvc3RvZmZpY2UucmVzdG9uLm1jaS5uZXQ+"
+    let transport = AsyncStreamTransport()
+    let session = AsyncPop3Session(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("+OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task { try await session.authenticateCramMd5(user: "tim", password: "tanstaaftanstaaf") }
+    await transport.yieldIncoming(Array("+ \(challenge)\r\n".utf8))
+    await transport.yieldIncoming(Array("-ERR Authentication failed\r\n".utf8))
+
+    do {
+        _ = try await authTask.value
+        #expect(Bool(false))
+    } catch let error as Pop3CommandError {
+        #expect(error.statusText == "Authentication failed")
+    } catch {
+        #expect(Bool(false))
+    }
+    #else
+    return
+    #endif
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async POP3 SASL XOAUTH2 failure response")
+func asyncPop3SaslXoauth2Failure() async throws {
+    let transport = AsyncStreamTransport()
+    let session = AsyncPop3Session(transport: transport)
+
+    let connectTask = Task { try await session.connect() }
+    await transport.yieldIncoming(Array("+OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    let authTask = Task {
+        try await session.authenticateXoauth2(user: "user@example.com", accessToken: "token")
+    }
+    await transport.yieldIncoming(Array("-ERR Authentication failed\r\n".utf8))
+    let response = try await authTask.value
+    #expect(response?.isSuccess == false)
+    #expect(response?.message == "Authentication failed")
 }
 
 @available(macOS 10.15, iOS 13.0, *)
