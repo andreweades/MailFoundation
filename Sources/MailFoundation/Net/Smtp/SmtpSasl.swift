@@ -78,6 +78,116 @@ public enum SmtpSasl {
         )
     }
 
+    /// Creates a SCRAM-SHA-1 SASL authentication configuration.
+    ///
+    /// SCRAM-SHA-1 (RFC 5802) is a salted challenge-response mechanism that
+    /// never sends the password over the network.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - authorizationId: Optional authorization identity.
+    /// - Returns: A ``SmtpAuthentication`` configured for SCRAM-SHA-1.
+    public static func scramSha1(
+        username: String,
+        password: String,
+        authorizationId: String? = nil
+    ) -> SmtpAuthentication {
+        scram(
+            username: username,
+            password: password,
+            algorithm: .sha1,
+            authorizationId: authorizationId
+        )
+    }
+
+    /// Creates a SCRAM-SHA-256 SASL authentication configuration.
+    ///
+    /// SCRAM-SHA-256 (RFC 7677) is a salted challenge-response mechanism that
+    /// never sends the password over the network. This is stronger than SCRAM-SHA-1.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - authorizationId: Optional authorization identity.
+    /// - Returns: A ``SmtpAuthentication`` configured for SCRAM-SHA-256.
+    public static func scramSha256(
+        username: String,
+        password: String,
+        authorizationId: String? = nil
+    ) -> SmtpAuthentication {
+        scram(
+            username: username,
+            password: password,
+            algorithm: .sha256,
+            authorizationId: authorizationId
+        )
+    }
+
+    /// Creates a SCRAM-SHA-512 SASL authentication configuration.
+    ///
+    /// SCRAM-SHA-512 is a salted challenge-response mechanism that
+    /// never sends the password over the network. This is the strongest SCRAM variant.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - authorizationId: Optional authorization identity.
+    /// - Returns: A ``SmtpAuthentication`` configured for SCRAM-SHA-512.
+    public static func scramSha512(
+        username: String,
+        password: String,
+        authorizationId: String? = nil
+    ) -> SmtpAuthentication {
+        scram(
+            username: username,
+            password: password,
+            algorithm: .sha512,
+            authorizationId: authorizationId
+        )
+    }
+
+    /// Creates a SCRAM SASL authentication configuration with the specified algorithm.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - algorithm: The hash algorithm to use.
+    ///   - authorizationId: Optional authorization identity.
+    /// - Returns: A ``SmtpAuthentication`` configured for the specified SCRAM variant.
+    public static func scram(
+        username: String,
+        password: String,
+        algorithm: ScramHashAlgorithm,
+        authorizationId: String? = nil
+    ) -> SmtpAuthentication {
+        let state = SmtpScramSaslState(
+            username: username,
+            password: password,
+            algorithm: algorithm,
+            authorizationId: authorizationId
+        )
+
+        // Generate initial message
+        let initialResponse: String?
+        do {
+            let initial = try state.context.getInitialMessage()
+            initialResponse = initial.base64EncodedString()
+        } catch {
+            initialResponse = nil
+        }
+
+        let responder: @Sendable (String) throws -> String = { challengeBase64 in
+            try state.processChallenge(challengeBase64)
+        }
+
+        return SmtpAuthentication(
+            mechanism: algorithm.mechanismName,
+            initialResponse: initialResponse,
+            responder: responder
+        )
+    }
+
     /// Creates an NTLM SASL authentication configuration.
     ///
     /// NTLM is a challenge-response authentication mechanism commonly used
@@ -189,10 +299,13 @@ public enum SmtpSasl {
     ///
     /// This method selects the most secure mechanism that is both supported
     /// by the server and available on this platform. The preference order is:
-    /// 1. GSSAPI (Kerberos, if available)
-    /// 2. NTLM
-    /// 3. PLAIN
-    /// 4. LOGIN
+    /// 1. SCRAM-SHA-512
+    /// 2. SCRAM-SHA-256
+    /// 3. SCRAM-SHA-1
+    /// 4. GSSAPI (Kerberos, if available)
+    /// 5. NTLM
+    /// 6. PLAIN
+    /// 7. LOGIN
     ///
     /// - Parameters:
     ///   - username: The username.
@@ -207,14 +320,31 @@ public enum SmtpSasl {
         host: String? = nil
     ) -> SmtpAuthentication? {
         let normalized = mechanisms.map { $0.uppercased() }
+
+        // SCRAM variants (strongest to weakest)
+        if normalized.contains("SCRAM-SHA-512") {
+            return scramSha512(username: username, password: password)
+        }
+        if normalized.contains("SCRAM-SHA-256") {
+            return scramSha256(username: username, password: password)
+        }
+        if normalized.contains("SCRAM-SHA-1") {
+            return scramSha1(username: username, password: password)
+        }
+
+        // GSSAPI (Kerberos)
         if normalized.contains("GSSAPI"),
            let auth = gssapi(host: host, username: username, password: password)
         {
             return auth
         }
+
+        // NTLM
         if normalized.contains("NTLM") {
             return ntlm(username: username, password: password)
         }
+
+        // Plain text (use only over TLS)
         if normalized.contains("PLAIN") {
             return plain(username: username, password: password)
         }
@@ -222,6 +352,42 @@ public enum SmtpSasl {
             return login(username: username, password: password)
         }
         return nil
+    }
+}
+
+/// Internal state holder for SMTP SCRAM SASL authentication.
+final class SmtpScramSaslState: @unchecked Sendable {
+    let context: ScramContext
+    private var challengePhase = true
+
+    init(
+        username: String,
+        password: String,
+        algorithm: ScramHashAlgorithm,
+        authorizationId: String?
+    ) {
+        self.context = ScramContext(
+            username: username,
+            password: password,
+            algorithm: algorithm,
+            authorizationId: authorizationId
+        )
+    }
+
+    func processChallenge(_ challengeBase64: String) throws -> String {
+        let trimmed = challengeBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let challengeData = Data(base64Encoded: trimmed) else {
+            throw ScramError.invalidBase64
+        }
+
+        if challengePhase {
+            let response = try context.processChallenge(challengeData)
+            challengePhase = false
+            return response.base64EncodedString()
+        } else {
+            try context.verifyServerSignature(challengeData)
+            return ""
+        }
     }
 }
 

@@ -68,6 +68,9 @@ public struct ImapAuthentication: Sendable {
 ///
 /// ## Supported Mechanisms
 ///
+/// - `SCRAM-SHA-512` - Salted challenge-response with SHA-512
+/// - `SCRAM-SHA-256` - Salted challenge-response with SHA-256
+/// - `SCRAM-SHA-1` - Salted challenge-response with SHA-1
 /// - `PLAIN` - Simple username/password in a single base64-encoded string
 /// - `LOGIN` - Challenge-response with separate username and password prompts
 /// - `NTLM` - Microsoft NTLM challenge-response authentication (NTLMv2)
@@ -75,6 +78,7 @@ public struct ImapAuthentication: Sendable {
 ///
 /// ## Security Considerations
 ///
+/// - `SCRAM-*` mechanisms are recommended - password is never sent, only hashes
 /// - `PLAIN` sends credentials in base64 (not encrypted) - use only over TLS
 /// - `LOGIN` is similar to PLAIN but uses challenge-response
 /// - `NTLM` never sends the password but uses legacy cryptography
@@ -224,6 +228,116 @@ public enum ImapSasl {
         )
     }
 
+    /// Creates a SCRAM-SHA-1 SASL authentication configuration.
+    ///
+    /// SCRAM-SHA-1 (RFC 5802) is a salted challenge-response mechanism that
+    /// never sends the password over the network.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - authorizationId: Optional authorization identity.
+    /// - Returns: An ``ImapAuthentication`` configured for SCRAM-SHA-1.
+    public static func scramSha1(
+        username: String,
+        password: String,
+        authorizationId: String? = nil
+    ) -> ImapAuthentication {
+        scram(
+            username: username,
+            password: password,
+            algorithm: .sha1,
+            authorizationId: authorizationId
+        )
+    }
+
+    /// Creates a SCRAM-SHA-256 SASL authentication configuration.
+    ///
+    /// SCRAM-SHA-256 (RFC 7677) is a salted challenge-response mechanism that
+    /// never sends the password over the network. This is stronger than SCRAM-SHA-1.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - authorizationId: Optional authorization identity.
+    /// - Returns: An ``ImapAuthentication`` configured for SCRAM-SHA-256.
+    public static func scramSha256(
+        username: String,
+        password: String,
+        authorizationId: String? = nil
+    ) -> ImapAuthentication {
+        scram(
+            username: username,
+            password: password,
+            algorithm: .sha256,
+            authorizationId: authorizationId
+        )
+    }
+
+    /// Creates a SCRAM-SHA-512 SASL authentication configuration.
+    ///
+    /// SCRAM-SHA-512 is a salted challenge-response mechanism that
+    /// never sends the password over the network. This is the strongest SCRAM variant.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - authorizationId: Optional authorization identity.
+    /// - Returns: An ``ImapAuthentication`` configured for SCRAM-SHA-512.
+    public static func scramSha512(
+        username: String,
+        password: String,
+        authorizationId: String? = nil
+    ) -> ImapAuthentication {
+        scram(
+            username: username,
+            password: password,
+            algorithm: .sha512,
+            authorizationId: authorizationId
+        )
+    }
+
+    /// Creates a SCRAM SASL authentication configuration with the specified algorithm.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - algorithm: The hash algorithm to use.
+    ///   - authorizationId: Optional authorization identity.
+    /// - Returns: An ``ImapAuthentication`` configured for the specified SCRAM variant.
+    public static func scram(
+        username: String,
+        password: String,
+        algorithm: ScramHashAlgorithm,
+        authorizationId: String? = nil
+    ) -> ImapAuthentication {
+        let state = ScramSaslState(
+            username: username,
+            password: password,
+            algorithm: algorithm,
+            authorizationId: authorizationId
+        )
+
+        // Generate initial message
+        let initialResponse: String?
+        do {
+            let initial = try state.context.getInitialMessage()
+            initialResponse = initial.base64EncodedString()
+        } catch {
+            initialResponse = nil
+        }
+
+        let responder: @Sendable (String) throws -> String = { challengeBase64 in
+            try state.processChallenge(challengeBase64)
+        }
+
+        return ImapAuthentication(
+            mechanism: algorithm.mechanismName,
+            initialResponse: initialResponse,
+            responder: responder
+        )
+    }
+
     /// Creates a GSSAPI (Kerberos) SASL authentication configuration.
     ///
     /// GSSAPI provides Kerberos-based authentication, commonly used in
@@ -281,10 +395,13 @@ public enum ImapSasl {
     ///
     /// This method selects the most secure mechanism that is both supported
     /// by the server and available on this platform. The preference order is:
-    /// 1. GSSAPI (Kerberos, if available)
-    /// 2. NTLM (for Exchange servers)
-    /// 3. PLAIN
-    /// 4. LOGIN
+    /// 1. SCRAM-SHA-512
+    /// 2. SCRAM-SHA-256
+    /// 3. SCRAM-SHA-1
+    /// 4. GSSAPI (Kerberos, if available)
+    /// 5. NTLM (for Exchange servers)
+    /// 6. PLAIN
+    /// 7. LOGIN
     ///
     /// - Parameters:
     ///   - username: The username.
@@ -299,14 +416,31 @@ public enum ImapSasl {
         host: String? = nil
     ) -> ImapAuthentication? {
         let normalized = mechanisms.map { $0.uppercased() }
+
+        // SCRAM variants (strongest to weakest)
+        if normalized.contains("SCRAM-SHA-512") {
+            return scramSha512(username: username, password: password)
+        }
+        if normalized.contains("SCRAM-SHA-256") {
+            return scramSha256(username: username, password: password)
+        }
+        if normalized.contains("SCRAM-SHA-1") {
+            return scramSha1(username: username, password: password)
+        }
+
+        // GSSAPI (Kerberos)
         if normalized.contains("GSSAPI"),
            let auth = gssapi(host: host, username: username, password: password)
         {
             return auth
         }
+
+        // NTLM
         if normalized.contains("NTLM") {
             return ntlm(username: username, password: password)
         }
+
+        // Plain text (use only over TLS)
         if normalized.contains("PLAIN") {
             return plain(username: username, password: password)
         }
@@ -314,6 +448,45 @@ public enum ImapSasl {
             return login(username: username, password: password)
         }
         return nil
+    }
+}
+
+/// Internal state holder for SCRAM SASL authentication.
+final class ScramSaslState: @unchecked Sendable {
+    let context: ScramContext
+    private var challengePhase = true
+
+    init(
+        username: String,
+        password: String,
+        algorithm: ScramHashAlgorithm,
+        authorizationId: String?
+    ) {
+        self.context = ScramContext(
+            username: username,
+            password: password,
+            algorithm: algorithm,
+            authorizationId: authorizationId
+        )
+    }
+
+    func processChallenge(_ challengeBase64: String) throws -> String {
+        let trimmed = challengeBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let challengeData = Data(base64Encoded: trimmed) else {
+            throw ScramError.invalidBase64
+        }
+
+        if challengePhase {
+            // Server first message - compute response
+            let response = try context.processChallenge(challengeData)
+            challengePhase = false
+            return response.base64EncodedString()
+        } else {
+            // Server final message - verify signature
+            try context.verifyServerSignature(challengeData)
+            // Return empty response after verification
+            return ""
+        }
     }
 }
 

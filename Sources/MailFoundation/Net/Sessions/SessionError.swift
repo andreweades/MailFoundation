@@ -7,6 +7,7 @@
 public enum SessionError: Error, Sendable, Equatable {
     case timeout
     case transportWriteFailed
+    case connectionClosed(message: String)
     case invalidState(expected: MailServiceState, actual: MailServiceState)
     case invalidImapState(expected: ImapSessionState, actual: ImapSessionState)
     case startTlsNotSupported

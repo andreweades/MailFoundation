@@ -34,6 +34,10 @@ public actor AsyncImapClient {
     public private(set) var capabilities: ImapCapabilities?
     public var protocolLogger: ProtocolLoggerType
 
+    public var isDisconnected: Bool {
+        state == .disconnected
+    }
+
     public init(transport: AsyncTransport, protocolLogger: ProtocolLoggerType = NullProtocolLogger()) {
         self.transport = transport
         self.protocolLogger = protocolLogger

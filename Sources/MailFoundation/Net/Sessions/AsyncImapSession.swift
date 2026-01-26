@@ -89,6 +89,9 @@ public actor AsyncImapSession {
                 try Task.checkCancellation()
                 let messages = await self.client.nextMessages()
                 if messages.isEmpty {
+                    if await self.client.isDisconnected {
+                        throw SessionError.connectionClosed(message: "Connection closed by server.")
+                    }
                     emptyReads += 1
                     continue
                 }
@@ -120,6 +123,9 @@ public actor AsyncImapSession {
                 try Task.checkCancellation()
                 let messages = await self.client.nextMessages()
                 if messages.isEmpty {
+                    if await self.client.isDisconnected {
+                        throw SessionError.connectionClosed(message: "Connection closed by server.")
+                    }
                     emptyReads += 1
                     continue
                 }
@@ -159,7 +165,7 @@ public actor AsyncImapSession {
                 }
                 emptyReads = 0
                 for message in messages {
-                    await await self.applySelectedState(&nextState, mailbox: mailbox, from: message)
+                    await self.applySelectedState(&nextState, mailbox: mailbox, from: message)
                     if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                         guard response.isOk else {
                             throw SessionError.imapError(status: response.status, text: response.text)
@@ -193,7 +199,7 @@ public actor AsyncImapSession {
                 }
                 emptyReads = 0
                 for message in messages {
-                    await await self.applySelectedState(&nextState, mailbox: mailbox, from: message)
+                    await self.applySelectedState(&nextState, mailbox: mailbox, from: message)
                     if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                         guard response.isOk else {
                             throw SessionError.imapError(status: response.status, text: response.text)
@@ -263,7 +269,7 @@ public actor AsyncImapSession {
                 }
                 emptyReads = 0
                 for message in messages {
-                    _ = await await self.ingestSelectedState(from: message)
+                    _ = await self.ingestSelectedState(from: message)
                     if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                         guard response.isOk else {
                             throw SessionError.imapError(status: response.status, text: response.text)

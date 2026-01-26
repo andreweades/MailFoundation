@@ -221,6 +221,8 @@ public let defaultErrorClassifier: ErrorClassifier = { error in
         switch sessionError {
         case .timeout:
             return .transient
+        case .connectionClosed:
+            return .requiresReconnection
         case .transportWriteFailed:
             return .requiresReconnection
         case .invalidState:
@@ -501,6 +503,8 @@ extension SessionError: RetryableError {
         switch self {
         case .timeout:
             return true
+        case .connectionClosed:
+            return true // Retryable via reconnection
         case .transportWriteFailed:
             return true // Transient, may succeed after reconnection
         case .invalidState:
