@@ -1,18 +1,21 @@
 //
 // AsyncQueue.swift
 //
-// Simple async queue.
+// Simple async queue with cancellation support.
 //
 
-@available(macOS 10.15, iOS 13.0, *)
-public actor AsyncQueue<Element: Sendable> {
-    private var elements: [Element] = []
-    private var waiters: [CheckedContinuation<Element?, Never>] = []
-    private var finished = false
+import Foundation
 
-    public init() {}
+private final class QueueState<Element: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    var elements: [Element] = []
+    var waiters: [CheckedContinuation<Element?, Never>] = []
+    var finished = false
 
-    public func enqueue(_ element: Element) {
+    func enqueue(_ element: Element) {
+        lock.lock()
+        defer { lock.unlock() }
+        
         guard !finished else { return }
         if !waiters.isEmpty {
             let waiter = waiters.removeFirst()
@@ -22,25 +25,66 @@ public actor AsyncQueue<Element: Sendable> {
         }
     }
 
-    public func dequeue() async -> Element? {
+    func dequeue(continuation: CheckedContinuation<Element?, Never>) {
+        lock.lock()
+        defer { lock.unlock() }
+        
         if !elements.isEmpty {
-            return elements.removeFirst()
-        }
-        if finished {
-            return nil
-        }
-        return await withCheckedContinuation { continuation in
+            continuation.resume(returning: elements.removeFirst())
+        } else if finished {
+            continuation.resume(returning: nil)
+        } else {
             waiters.append(continuation)
         }
     }
 
-    public func finish() {
-        guard !finished else { return }
-        finished = true
+    func cancelAll() {
+        lock.lock()
         let pending = waiters
-        waiters.removeAll(keepingCapacity: true)
+        waiters.removeAll()
+        lock.unlock()
+        
         for waiter in pending {
             waiter.resume(returning: nil)
         }
+    }
+
+    func finish() {
+        lock.lock()
+        finished = true
+        let pending = waiters
+        waiters.removeAll()
+        lock.unlock()
+        
+        for waiter in pending {
+            waiter.resume(returning: nil)
+        }
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+public actor AsyncQueue<Element: Sendable> {
+    private let state = QueueState<Element>()
+
+    public init() {}
+
+    public func enqueue(_ element: Element) {
+        state.enqueue(element)
+    }
+
+    public func dequeue() async -> Element? {
+        if Task.isCancelled { return nil }
+        
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                state.dequeue(continuation: continuation)
+            }
+        } onCancel: {
+            state.cancelAll()
+        }
+    }
+
+    public func finish() {
+        state.finish()
     }
 }
