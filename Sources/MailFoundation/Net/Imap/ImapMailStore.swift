@@ -13,6 +13,18 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
 
     public override var protocolName: String { "IMAP" }
 
+    public static func make(
+        host: String,
+        port: Int,
+        backend: TransportBackend = .tcp,
+        proxy: ProxySettings? = nil,
+        protocolLogger: ProtocolLoggerType = NullProtocolLogger(),
+        maxReads: Int = 10
+    ) throws -> ImapMailStore {
+        let transport = try TransportFactory.make(host: host, port: port, backend: backend, proxy: proxy)
+        return ImapMailStore(transport: transport, protocolLogger: protocolLogger, maxReads: maxReads)
+    }
+
     public init(transport: Transport, protocolLogger: ProtocolLoggerType = NullProtocolLogger(), maxReads: Int = 10) {
         self.session = ImapSession(transport: transport, protocolLogger: protocolLogger, maxReads: maxReads)
         super.init(protocolLogger: protocolLogger)

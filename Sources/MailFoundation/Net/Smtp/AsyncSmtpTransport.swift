@@ -40,6 +40,17 @@ public actor AsyncSmtpTransport: AsyncMailTransport {
         return AsyncSmtpTransport(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        proxy: ProxySettings,
+        timeoutMilliseconds: Int = defaultSmtpTimeoutMs
+    ) async throws -> AsyncSmtpTransport {
+        let transport = try await AsyncTransportFactory.make(host: host, port: port, backend: backend, proxy: proxy)
+        return AsyncSmtpTransport(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
+    }
+
     public init(transport: AsyncTransport, timeoutMilliseconds: Int = defaultSmtpTimeoutMs) {
         self.session = AsyncSmtpSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }

@@ -9,7 +9,6 @@ public actor AsyncImapMailStore: AsyncMailStore {
     public typealias FolderType = AsyncImapFolder
 
     private let session: AsyncImapSession
-    public let protocolLogger: ProtocolLoggerType
     private var selectedFolderStorage: AsyncImapFolder?
     private var selectedAccessStorage: FolderAccess?
 
@@ -28,12 +27,31 @@ public actor AsyncImapMailStore: AsyncMailStore {
         await session.setTimeoutMilliseconds(milliseconds)
     }
 
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        timeoutMilliseconds: Int = defaultImapTimeoutMs
+    ) throws -> AsyncImapMailStore {
+        let transport = try AsyncTransportFactory.make(host: host, port: port, backend: backend)
+        return AsyncImapMailStore(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
+    }
+
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        proxy: ProxySettings,
+        timeoutMilliseconds: Int = defaultImapTimeoutMs
+    ) async throws -> AsyncImapMailStore {
+        let transport = try await AsyncTransportFactory.make(host: host, port: port, backend: backend, proxy: proxy)
+        return AsyncImapMailStore(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
+    }
+
     public init(
         transport: AsyncTransport,
-        protocolLogger: ProtocolLoggerType = NullProtocolLogger(),
         timeoutMilliseconds: Int = defaultImapTimeoutMs
     ) {
-        self.protocolLogger = protocolLogger
         self.session = AsyncImapSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 

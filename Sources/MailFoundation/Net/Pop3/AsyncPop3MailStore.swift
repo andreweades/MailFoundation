@@ -30,6 +30,27 @@ public actor AsyncPop3MailStore: AsyncMailStore {
         await session.setTimeoutMilliseconds(milliseconds)
     }
 
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        timeoutMilliseconds: Int = defaultPop3TimeoutMs
+    ) throws -> AsyncPop3MailStore {
+        let transport = try AsyncTransportFactory.make(host: host, port: port, backend: backend)
+        return AsyncPop3MailStore(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
+    }
+
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        proxy: ProxySettings,
+        timeoutMilliseconds: Int = defaultPop3TimeoutMs
+    ) async throws -> AsyncPop3MailStore {
+        let transport = try await AsyncTransportFactory.make(host: host, port: port, backend: backend, proxy: proxy)
+        return AsyncPop3MailStore(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
+    }
+
     public init(transport: AsyncTransport, timeoutMilliseconds: Int = defaultPop3TimeoutMs) {
         self.session = AsyncPop3Session(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
         let folder = AsyncPop3Folder(session: session, store: nil)

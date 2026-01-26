@@ -21,6 +21,18 @@ public final class Pop3MailStore: MailServiceBase<Pop3Response>, MailStore {
 
     public override var protocolName: String { "POP3" }
 
+    public static func make(
+        host: String,
+        port: Int,
+        backend: TransportBackend = .tcp,
+        proxy: ProxySettings? = nil,
+        protocolLogger: ProtocolLoggerType = NullProtocolLogger(),
+        maxReads: Int = 10
+    ) throws -> Pop3MailStore {
+        let transport = try TransportFactory.make(host: host, port: port, backend: backend, proxy: proxy)
+        return Pop3MailStore(transport: transport, protocolLogger: protocolLogger, maxReads: maxReads)
+    }
+
     public init(transport: Transport, protocolLogger: ProtocolLoggerType = NullProtocolLogger(), maxReads: Int = 10) {
         self.session = Pop3Session(transport: transport, protocolLogger: protocolLogger, maxReads: maxReads)
         self.inbox = Pop3Folder(session: self.session, store: nil)
