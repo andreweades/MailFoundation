@@ -6,10 +6,40 @@
 
 import Foundation
 
+/// An error that occurs when parsing a sequence set from a string.
 public enum SequenceSetParseError: Error, Sendable {
+    /// The token could not be parsed as a valid sequence set.
     case invalidToken
 }
 
+/// A set of IMAP message sequence numbers.
+///
+/// Message sequence numbers are 1-based indices that refer to messages in a mailbox
+/// in their current order. Unlike unique identifiers (`UniqueId`), sequence numbers
+/// can change when messages are expunged from the mailbox.
+///
+/// A `SequenceSet` efficiently represents sets of sequence numbers by storing
+/// contiguous ranges rather than individual values. This is particularly useful
+/// for IMAP commands that operate on multiple messages.
+///
+/// The `*` character in IMAP represents the highest sequence number in the mailbox,
+/// which is represented by `UInt32.max` in this implementation.
+///
+/// ## Example
+///
+/// ```swift
+/// // Create a sequence set from an array of sequence numbers
+/// let set = SequenceSet([1, 2, 3, 5, 6, 7, 10])
+/// print(set) // "1:3,5:7,10"
+///
+/// // Parse a sequence set from a string
+/// let parsed = try SequenceSet(parsing: "1:5,10,15:*")
+///
+/// // Check if a sequence number is in the set
+/// if set.contains(5) {
+///     print("Contains sequence number 5")
+/// }
+/// ```
 public struct SequenceSet: Sendable, Sequence, CustomStringConvertible {
     private struct Range: Sendable {
         var start: UInt32
@@ -53,12 +83,31 @@ public struct SequenceSet: Sendable, Sequence, CustomStringConvertible {
     private var ranges: [Range] = []
     private var totalCount: Int64 = 0
 
+    /// The sort order of the sequence numbers in the set.
+    ///
+    /// The sort order is automatically determined based on the input values.
+    /// When the sequence numbers are in ascending or descending order, this
+    /// property reflects that order. Otherwise, it is `.none`.
     public private(set) var sortOrder: SortOrder
 
+    /// Creates an empty sequence set with the specified sort order.
+    ///
+    /// - Parameter sortOrder: The sorting order for the sequence numbers.
     public init(sortOrder: SortOrder = .none) {
         self.sortOrder = sortOrder
     }
 
+    /// Creates a sequence set from an array of sequence numbers.
+    ///
+    /// Contiguous sequence numbers are automatically combined into ranges for
+    /// efficient storage and serialization.
+    ///
+    /// - Parameters:
+    ///   - sequences: An array of sequence numbers. All values must be non-zero.
+    ///   - sortOrder: The sorting order for the sequence numbers.
+    ///     If `.none` (the default), the sort order is automatically determined.
+    ///
+    /// - Precondition: All values in `sequences` must be non-zero.
     public init(_ sequences: [UInt32], sortOrder: SortOrder = .none) {
         self.sortOrder = sortOrder
         guard !sequences.isEmpty else { return }
@@ -70,19 +119,40 @@ public struct SequenceSet: Sendable, Sequence, CustomStringConvertible {
         }
     }
 
+    /// Creates a sequence set from an array of integer sequence numbers.
+    ///
+    /// Contiguous sequence numbers are automatically combined into ranges for
+    /// efficient storage and serialization.
+    ///
+    /// - Parameters:
+    ///   - sequences: An array of sequence numbers as `Int` values.
+    ///     All values must be non-zero and within the `UInt32` range.
+    ///   - sortOrder: The sorting order for the sequence numbers.
+    ///     If `.none` (the default), the sort order is automatically determined.
+    ///
+    /// - Precondition: All values in `sequences` must be non-zero.
     public init(_ sequences: [Int], sortOrder: SortOrder = .none) {
         let mapped = sequences.map { UInt32($0) }
         self.init(mapped, sortOrder: sortOrder)
     }
 
+    /// The number of sequence numbers in the set.
+    ///
+    /// For very large sets, this value is capped at `Int.max`.
     public var count: Int {
         totalCount > Int64(Int.max) ? Int.max : Int(totalCount)
     }
 
+    /// Indicates whether the set contains no sequence numbers.
     public var isEmpty: Bool {
         totalCount == 0
     }
 
+    /// Checks if the set contains the specified sequence number.
+    ///
+    /// - Parameter value: The sequence number to check.
+    ///
+    /// - Returns: `true` if the set contains the specified sequence number; otherwise, `false`.
     public func contains(_ value: UInt32) -> Bool {
         for range in ranges where range.contains(value) {
             return true
@@ -90,6 +160,12 @@ public struct SequenceSet: Sendable, Sequence, CustomStringConvertible {
         return false
     }
 
+    /// Returns an iterator over the sequence numbers in the set.
+    ///
+    /// The iterator yields sequence numbers in the order determined by the
+    /// ranges stored in the set.
+    ///
+    /// - Returns: An iterator that yields `UInt32` sequence numbers.
     public func makeIterator() -> AnyIterator<UInt32> {
         var rangeIndex = 0
         var elementIndex = 0
@@ -112,10 +188,38 @@ public struct SequenceSet: Sendable, Sequence, CustomStringConvertible {
         }
     }
 
+    /// Returns a string representation of the sequence set.
+    ///
+    /// The format is a comma-separated list of sequence numbers and ranges
+    /// (e.g., "1:3,5,10:15"). The `*` character represents the highest
+    /// sequence number in the mailbox.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let set = SequenceSet([1, 2, 3, 10, 11, 12])
+    /// print(set) // "1:3,10:12"
+    /// ```
     public var description: String {
         ranges.map { $0.serialized() }.joined(separator: ",")
     }
 
+    /// Parses a sequence set from a string.
+    ///
+    /// The expected format is a comma-separated list of sequence numbers and ranges,
+    /// such as "1,3:5,10,15:*". The `*` character represents the highest sequence
+    /// number in the mailbox.
+    ///
+    /// - Parameter token: A string containing the sequence set to parse.
+    ///
+    /// - Throws: `SequenceSetParseError.invalidToken` if the token cannot be parsed.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let set = try SequenceSet(parsing: "1:5,10,15:20")
+    /// print(set.count) // 12 (1,2,3,4,5,10,15,16,17,18,19,20)
+    /// ```
     public init(parsing token: String) throws {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {

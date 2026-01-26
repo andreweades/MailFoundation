@@ -6,14 +6,76 @@
 
 import Foundation
 
+/// Errors that can occur during message sorting.
 public enum MessageSorterError: Error, Sendable, Equatable {
+    /// The orderBy parameter is empty.
+    ///
+    /// At least one sort criterion must be specified.
     case emptyOrderBy
+
+    /// A message is missing its envelope data.
+    ///
+    /// Sorting by date, subject, from, to, cc, displayFrom, or displayTo
+    /// requires envelope data to be fetched.
     case missingEnvelope
+
+    /// A message is missing required data for the specified sort type.
+    ///
+    /// - Parameter type: The order-by type that requires missing data.
     case missingSortData(OrderByType)
+
+    /// The specified sort type is not supported.
+    ///
+    /// - Parameter type: The unsupported order-by type.
     case unsupportedOrderByType(OrderByType)
 }
 
+/// A utility for sorting messages by various criteria.
+///
+/// `MessageSorter` provides client-side sorting of message summaries by criteria
+/// such as date, subject, sender, recipients, size, and more. This is useful when
+/// the server doesn't support the SORT extension or when you need to re-sort
+/// already-fetched messages.
+///
+/// ## Topics
+///
+/// ### Sorting Methods
+/// - ``sort(_:orderBy:)``
+///
+/// ## Example
+///
+/// ```swift
+/// // Sort messages by date, newest first
+/// let sorted = try MessageSorter.sort(
+///     messages,
+///     orderBy: [OrderBy(.date, order: .descending)]
+/// )
+///
+/// // Sort by sender, then by date
+/// let sorted = try MessageSorter.sort(
+///     messages,
+///     orderBy: [OrderBy(.from, order: .ascending), OrderBy(.date, order: .ascending)]
+/// )
+///
+/// // Or use the sequence extension
+/// let sorted = try messages.sorted(orderBy: [.date])
+/// ```
 public enum MessageSorter {
+    /// Sorts messages by the specified criteria.
+    ///
+    /// This method performs a client-side sort of messages based on one or more
+    /// sort criteria. The sort is stable, meaning messages that compare equal
+    /// retain their relative order.
+    ///
+    /// - Parameters:
+    ///   - messages: The messages to sort.
+    ///   - orderBy: The sort criteria, applied in order. The first criterion is the
+    ///     primary sort key, the second is used to break ties, and so on.
+    ///
+    /// - Returns: A new array with the messages sorted.
+    ///
+    /// - Throws: ``MessageSorterError`` if sorting fails due to missing data or
+    ///   invalid parameters.
     public static func sort(
         _ messages: [MessageSummary],
         orderBy: [OrderBy]
@@ -31,6 +93,16 @@ public enum MessageSorter {
 }
 
 public extension Sequence where Element == MessageSummary {
+    /// Sorts the messages in this sequence by the specified criteria.
+    ///
+    /// This is a convenience method that calls ``MessageSorter/sort(_:orderBy:)``
+    /// on the sequence elements.
+    ///
+    /// - Parameter orderBy: The sort criteria, applied in order.
+    ///
+    /// - Returns: A new array with the messages sorted.
+    ///
+    /// - Throws: ``MessageSorterError`` if sorting fails.
     func sorted(orderBy: [OrderBy]) throws -> [MessageSummary] {
         try MessageSorter.sort(Array(self), orderBy: orderBy)
     }

@@ -7,6 +7,57 @@
 /// Default timeout for POP3 operations in milliseconds (2 minutes, matching MailKit).
 public let defaultPop3TimeoutMs = 120_000
 
+/// A higher-level asynchronous POP3 session that manages protocol interactions.
+///
+/// `AsyncPop3Session` wraps the low-level ``AsyncPop3Client`` to provide a convenient
+/// async/await API for POP3 operations. It handles response waiting, error
+/// conversion, and multiline response parsing.
+///
+/// ## Overview
+///
+/// This actor provides methods for all standard POP3 operations:
+/// - Connection and authentication
+/// - Message listing (STAT, LIST, UIDL)
+/// - Message retrieval (RETR, TOP)
+/// - Message management (DELE, RSET, NOOP)
+/// - Capabilities query (CAPA)
+/// - TLS upgrade (STLS)
+///
+/// ## Usage
+///
+/// For most use cases, prefer ``AsyncPop3MailStore`` which provides a higher-level
+/// abstraction. Use `AsyncPop3Session` directly when you need more control over
+/// the protocol interactions.
+///
+/// ```swift
+/// let session = try AsyncPop3Session.make(host: "pop.example.com", port: 995, backend: .tls)
+///
+/// // Connect and authenticate
+/// _ = try await session.connect()
+/// _ = try await session.authenticate(user: "user@example.com", password: "secret")
+///
+/// // Get mailbox status
+/// let stat = try await session.stat()
+/// print("Messages: \(stat.count)")
+///
+/// // Retrieve a message
+/// let messageData = try await session.retrData(1)
+/// let message = try messageData.message()
+///
+/// // Clean up
+/// await session.disconnect()
+/// ```
+///
+/// ## Thread Safety
+///
+/// This class is implemented as an actor, providing inherent thread safety
+/// for concurrent access within Swift's structured concurrency model.
+///
+/// ## See Also
+///
+/// - ``AsyncPop3MailStore`` for high-level mail store operations
+/// - ``Pop3Session`` for synchronous operations
+/// - ``AsyncPop3Client`` for low-level protocol access
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncPop3Session {
     private let client: AsyncPop3Client
@@ -21,17 +72,31 @@ public actor AsyncPop3Session {
 
     /// Sets the timeout for network operations.
     ///
-    /// - Parameter milliseconds: The timeout in milliseconds
+    /// - Parameter milliseconds: The timeout in milliseconds.
     public func setTimeoutMilliseconds(_ milliseconds: Int) {
         timeoutMilliseconds = milliseconds
     }
 
+    /// Initializes a new async POP3 session.
+    ///
+    /// - Parameters:
+    ///   - transport: The async transport to use for communication.
+    ///   - timeoutMilliseconds: The timeout for network operations.
     public init(transport: AsyncTransport, timeoutMilliseconds: Int = defaultPop3TimeoutMs) {
         self.transport = transport
         self.client = AsyncPop3Client(transport: transport)
         self.timeoutMilliseconds = timeoutMilliseconds
     }
 
+    /// Creates a new async POP3 session with the specified connection parameters.
+    ///
+    /// - Parameters:
+    ///   - host: The hostname of the POP3 server.
+    ///   - port: The port number.
+    ///   - backend: The async transport backend to use.
+    ///   - timeoutMilliseconds: The timeout for network operations.
+    /// - Returns: A configured session ready for connection.
+    /// - Throws: An error if the transport cannot be created.
     public static func make(
         host: String,
         port: UInt16,
@@ -42,6 +107,16 @@ public actor AsyncPop3Session {
         return AsyncPop3Session(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
+    /// Creates a new async POP3 session with proxy support.
+    ///
+    /// - Parameters:
+    ///   - host: The hostname of the POP3 server.
+    ///   - port: The port number.
+    ///   - backend: The async transport backend to use.
+    ///   - proxy: The proxy settings for the connection.
+    ///   - timeoutMilliseconds: The timeout for network operations.
+    /// - Returns: A configured session ready for connection.
+    /// - Throws: An error if the transport cannot be created.
     public static func make(
         host: String,
         port: UInt16,

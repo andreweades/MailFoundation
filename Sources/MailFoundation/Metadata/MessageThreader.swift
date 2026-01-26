@@ -6,14 +6,91 @@
 
 import Foundation
 
+/// Errors that can occur during message threading.
 public enum MessageThreaderError: Error, Sendable, Equatable {
+    /// A message is missing its envelope data.
+    ///
+    /// Threading requires envelope data (subject, message-id, references)
+    /// to be fetched for each message.
     case missingEnvelope
+
+    /// The orderBy parameter is empty.
+    ///
+    /// At least one sort criterion must be specified.
     case emptyOrderBy
+
+    /// The specified sort type is not supported.
+    ///
+    /// - Parameter type: The unsupported order-by type.
     case unsupportedOrderByType(OrderByType)
+
+    /// A message is missing required data for the specified sort type.
+    ///
+    /// - Parameter type: The order-by type that requires missing data.
     case missingSortData(OrderByType)
 }
 
+/// A utility for threading messages into conversation trees.
+///
+/// `MessageThreader` implements the IMAP THREAD extension algorithms for organizing
+/// messages into conversation threads. It supports both the `ORDEREDSUBJECT` and
+/// `REFERENCES` algorithms as defined in RFC 5256.
+///
+/// ## Threading Algorithms
+///
+/// - **References**: Uses Message-Id, In-Reply-To, and References headers to build
+///   an accurate thread tree. This is the recommended algorithm for most use cases.
+///
+/// - **Ordered Subject**: Groups messages by normalized subject and sorts by date.
+///   Simpler but less accurate than the references algorithm.
+///
+/// ## Topics
+///
+/// ### Threading Methods
+/// - ``thread(_:algorithm:orderBy:)``
+///
+/// ## Example
+///
+/// ```swift
+/// // Thread messages using the references algorithm
+/// let threads = try MessageThreader.thread(
+///     messages,
+///     algorithm: .references,
+///     orderBy: [.date]
+/// )
+///
+/// // Or use the sequence extension
+/// let threads = try messages.thread(
+///     algorithm: .references,
+///     orderBy: [.date]
+/// )
+/// ```
 public enum MessageThreader {
+    /// Threads messages into a conversation tree.
+    ///
+    /// This method organizes a collection of messages into a tree structure based on
+    /// their relationships (replies, references) or subjects. The resulting threads
+    /// can be displayed hierarchically to show conversation flow.
+    ///
+    /// - Parameters:
+    ///   - messages: The messages to thread. Each message must have its envelope fetched.
+    ///   - algorithm: The threading algorithm to use.
+    ///   - orderBy: The sort criteria for ordering threads. Defaults to arrival order.
+    ///
+    /// - Returns: An array of root-level thread nodes.
+    ///
+    /// - Throws: ``MessageThreaderError`` if threading fails due to missing data or
+    ///   invalid parameters.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let threads = try MessageThreader.thread(
+    ///     messages,
+    ///     algorithm: .references,
+    ///     orderBy: [OrderBy(.date, order: .descending)]
+    /// )
+    /// ```
     public static func thread(
         _ messages: [MessageSummary],
         algorithm: ThreadingAlgorithm,
@@ -37,6 +114,18 @@ public enum MessageThreader {
 }
 
 public extension Sequence where Element == MessageSummary {
+    /// Threads the messages in this sequence into a conversation tree.
+    ///
+    /// This is a convenience method that calls ``MessageThreader/thread(_:algorithm:orderBy:)``
+    /// on the sequence elements.
+    ///
+    /// - Parameters:
+    ///   - algorithm: The threading algorithm to use.
+    ///   - orderBy: The sort criteria for ordering threads. Defaults to arrival order.
+    ///
+    /// - Returns: An array of root-level thread nodes.
+    ///
+    /// - Throws: ``MessageThreaderError`` if threading fails.
     func thread(
         algorithm: ThreadingAlgorithm,
         orderBy: [OrderBy] = [.arrival]

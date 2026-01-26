@@ -6,12 +6,53 @@
 
 import Foundation
 
+/// Utilities for parsing and normalizing message subjects for threading.
+///
+/// `ThreadableSubject` provides functionality to extract a normalized subject from
+/// a message subject line by removing common prefixes like "Re:", "Re[#]:", "Fwd:",
+/// and mailing list tags like "[listname]". This normalized subject can then be
+/// used to group messages into conversation threads.
+///
+/// ## Topics
+///
+/// ### Parsing
+/// - ``parse(_:)-2v0ww``
+/// - ``parse(_:)-81d1y``
+///
+/// ### Result
+/// - ``Result``
+///
+/// ## Example
+///
+/// ```swift
+/// let result = ThreadableSubject.parse("Re: [swift-users] Question about protocols")
+/// print(result.normalized)  // "Question about protocols"
+/// print(result.replyDepth)  // 1
+///
+/// let result2 = ThreadableSubject.parse("Re[3]: Hello")
+/// print(result2.replyDepth)  // 3
+/// ```
 public enum ThreadableSubject {
+    /// The result of parsing a message subject for threading.
     public struct Result: Sendable, Equatable {
+        /// The normalized subject with prefixes removed.
+        ///
+        /// All "Re:", "Re[#]:", "Fwd:", and mailing list tags have been stripped.
+        /// Whitespace is normalized to single spaces.
         public let normalized: String
+
+        /// The reply depth based on the prefixes found.
+        ///
+        /// Each "Re:", "Fwd:", or "Re[n]:" prefix increments this counter.
+        /// For "Re[n]:" prefixes, the value of n is added.
         public let replyDepth: Int
     }
 
+    /// Parses an optional subject string for threading.
+    ///
+    /// - Parameter subject: The subject string to parse, or `nil`.
+    /// - Returns: A result with the normalized subject and reply depth.
+    ///   If `subject` is `nil`, returns an empty normalized subject with depth 0.
     public static func parse(_ subject: String?) -> Result {
         guard let subject else {
             return Result(normalized: "", replyDepth: 0)
@@ -19,6 +60,19 @@ public enum ThreadableSubject {
         return parse(subject)
     }
 
+    /// Parses a subject string for threading.
+    ///
+    /// This method removes common prefixes from the subject to create a normalized
+    /// version suitable for threading. The following are removed:
+    /// - "Re:" prefixes (case-insensitive)
+    /// - "Re[n]:" prefixes with numeric counts
+    /// - "Fwd:" prefixes (case-insensitive)
+    /// - Mailing list tags in square brackets like "[list-name]"
+    ///
+    /// The method also normalizes whitespace and removes the "(no subject)" placeholder.
+    ///
+    /// - Parameter subject: The subject string to parse.
+    /// - Returns: A result with the normalized subject and reply depth.
     public static func parse(_ subject: String) -> Result {
         var replyDepth = 0
         let chars = Array(subject)

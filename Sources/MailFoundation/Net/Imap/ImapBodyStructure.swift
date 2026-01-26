@@ -6,43 +6,186 @@
 
 import Foundation
 
+/// Represents a content disposition header (e.g., "attachment", "inline").
+///
+/// Content disposition indicates how a body part should be displayed or handled.
+///
+/// ## Example
+///
+/// ```swift
+/// if let disposition = bodyPart.disposition {
+///     if disposition.type.uppercased() == "ATTACHMENT" {
+///         let filename = disposition.parameters["FILENAME"]
+///         // Handle attachment
+///     }
+/// }
+/// ```
 public struct ImapContentDisposition: Sendable, Equatable {
+    /// The disposition type (e.g., "inline", "attachment").
     public let type: String
+
+    /// The disposition parameters (e.g., "filename", "size").
     public let parameters: [String: String]
 }
 
+/// Represents a single (non-multipart) body part in an IMAP message.
+///
+/// A body part contains information about the content type, encoding, size,
+/// and other metadata for a single MIME part.
+///
+/// ## Properties
+///
+/// - `type` and `subtype` together form the content type (e.g., "TEXT/PLAIN")
+/// - `encoding` is the content transfer encoding (e.g., "BASE64", "QUOTED-PRINTABLE")
+/// - `size` is the body size in bytes
+/// - `lines` is the number of lines (for TEXT types)
+///
+/// ## See Also
+///
+/// - ``ImapBodyStructure``
+/// - ``ImapMultipart``
 public struct ImapBodyPart: Sendable, Equatable {
+    /// The MIME type (e.g., "TEXT", "IMAGE", "APPLICATION").
     public let type: String
+
+    /// The MIME subtype (e.g., "PLAIN", "HTML", "PDF").
     public let subtype: String
+
+    /// The content type parameters (e.g., "CHARSET", "NAME").
     public let parameters: [String: String]
+
+    /// The Content-ID header value.
     public let id: String?
+
+    /// The Content-Description header value.
     public let description: String?
+
+    /// The content transfer encoding (e.g., "7BIT", "BASE64", "QUOTED-PRINTABLE").
     public let encoding: String?
+
+    /// The body size in bytes.
     public let size: Int?
+
+    /// The number of lines (for TEXT types).
     public let lines: Int?
+
+    /// The MD5 checksum of the body, if provided.
     public let md5: String?
+
+    /// The raw envelope data for embedded MESSAGE/RFC822 parts.
     public let envelopeRaw: String?
+
+    /// The embedded body structure for MESSAGE/RFC822 parts.
     public let embedded: ImapBodyStructure?
+
+    /// The content disposition (inline, attachment).
     public let disposition: ImapContentDisposition?
+
+    /// The content language(s).
     public let language: [String]?
+
+    /// The content location URI.
     public let location: String?
+
+    /// Additional extension data.
     public let extensions: [String]
 }
 
+/// Represents a multipart body structure containing multiple parts.
+///
+/// Multipart messages contain multiple body parts, such as text and HTML
+/// alternatives, or a message body with attachments.
+///
+/// ## Common Subtypes
+///
+/// - `MIXED` - Different content types (typical for attachments)
+/// - `ALTERNATIVE` - Same content in different formats (text/html)
+/// - `RELATED` - Related content (HTML with inline images)
+/// - `SIGNED` - Digitally signed content
+/// - `ENCRYPTED` - Encrypted content
+///
+/// ## See Also
+///
+/// - ``ImapBodyStructure``
+/// - ``ImapBodyPart``
 public struct ImapMultipart: Sendable, Equatable {
+    /// The child parts of this multipart.
     public let parts: [ImapBodyStructure]
+
+    /// The multipart subtype (e.g., "MIXED", "ALTERNATIVE", "RELATED").
     public let subtype: String
+
+    /// The multipart parameters (e.g., "BOUNDARY").
     public let parameters: [String: String]
+
+    /// The content disposition, if any.
     public let disposition: ImapContentDisposition?
+
+    /// The content language(s).
     public let language: [String]?
+
+    /// The content location URI.
     public let location: String?
+
+    /// Additional extension data.
     public let extensions: [String]
 }
 
+/// Represents the structure of an IMAP message body.
+///
+/// The body structure describes the MIME structure of a message, including
+/// content types, encodings, sizes, and nested parts. This information is
+/// returned by the BODYSTRUCTURE FETCH item.
+///
+/// ## Overview
+///
+/// IMAP body structures are either single parts (text, image, etc.) or
+/// multipart containers. Each part is identified by a section specifier
+/// (e.g., "1", "2.1", "2.2").
+///
+/// ## Usage Example
+///
+/// ```swift
+/// let bodyStructure = attributes.parsedBodyStructure()
+///
+/// // Enumerate all parts
+/// for (id, part) in bodyStructure.enumerateParts() {
+///     print("Part \(id): \(part.type)/\(part.subtype)")
+///     if let encoding = part.encoding {
+///         print("  Encoding: \(encoding)")
+///     }
+/// }
+///
+/// // Get a specific part
+/// if let textPart = bodyStructure.part(for: "1") {
+///     print("Text part: \(textPart.type)/\(textPart.subtype)")
+/// }
+/// ```
+///
+/// ## Part Numbering
+///
+/// IMAP part numbers follow a dot-separated hierarchy:
+/// - "1" - First (or only) part
+/// - "2" - Second part
+/// - "2.1" - First subpart of the second part
+/// - "2.1.1" - First subpart of the first subpart of the second part
+///
+/// ## See Also
+///
+/// - ``ImapBodyPart``
+/// - ``ImapMultipart``
+/// - ``ImapFetchAttributes``
 public indirect enum ImapBodyStructure: Sendable, Equatable {
+    /// A single (non-multipart) body part.
     case single(ImapBodyPart)
+
+    /// A multipart container with child parts.
     case multipart(ImapMultipart)
 
+    /// Parses a body structure from its string representation.
+    ///
+    /// - Parameter text: The BODYSTRUCTURE string from a FETCH response.
+    /// - Returns: The parsed body structure, or `nil` if parsing fails.
     public static func parse(_ text: String) -> ImapBodyStructure? {
         var parser = ImapBodyStructureParser(text: text)
         guard let node = parser.parse() else {
@@ -51,17 +194,41 @@ public indirect enum ImapBodyStructure: Sendable, Equatable {
         return parseNode(node)
     }
 
+    /// Enumerates all body parts with their section IDs.
+    ///
+    /// This method traverses the entire body structure and returns all
+    /// single (non-multipart) parts with their IMAP section identifiers.
+    ///
+    /// - Returns: An array of tuples containing (section ID, body part).
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// for (sectionId, part) in bodyStructure.enumerateParts() {
+    ///     print("Section \(sectionId): \(part.type)/\(part.subtype)")
+    /// }
+    /// ```
     public func enumerateParts() -> [(String, ImapBodyPart)] {
         var result: [(String, ImapBodyPart)] = []
         enumerateParts(prefix: "", into: &result)
         return result
     }
 
+    /// Gets the body structure node at the specified section ID.
+    ///
+    /// - Parameter id: The section ID (e.g., "1", "2.1").
+    /// - Returns: The body structure node, or `nil` if not found.
     public func node(for id: String) -> ImapBodyStructure? {
         guard let path = Self.parsePartPath(id) else { return nil }
         return node(for: path)
     }
 
+    /// Gets the body part at the specified section ID.
+    ///
+    /// Unlike `node(for:)`, this method only returns single (non-multipart) parts.
+    ///
+    /// - Parameter id: The section ID (e.g., "1", "2.1").
+    /// - Returns: The body part, or `nil` if not found or if it's a multipart.
     public func part(for id: String) -> ImapBodyPart? {
         guard let node = node(for: id) else { return nil }
         if case let .single(part) = node {
@@ -70,6 +237,10 @@ public indirect enum ImapBodyStructure: Sendable, Equatable {
         return nil
     }
 
+    /// Resolves a fetch body section against this structure.
+    ///
+    /// - Parameter section: The body section to resolve.
+    /// - Returns: The resolution result, or `nil` if the section is invalid.
     public func resolve(section: ImapFetchBodySection) -> ImapBodySectionResolution? {
         if section.part.isEmpty {
             return ImapBodySectionResolution(scope: .message(node: self), subsection: section.subsection)
@@ -133,10 +304,17 @@ public indirect enum ImapBodyStructure: Sendable, Equatable {
     }
 }
 
+/// The scope of a body section reference.
+///
+/// Indicates whether the section refers to the entire message or a specific part.
 public enum ImapBodySectionScope: Sendable, Equatable {
+    /// The section refers to the entire message.
     case message(node: ImapBodyStructure)
+
+    /// The section refers to a specific part within the message.
     case part(id: String, node: ImapBodyStructure)
 
+    /// The body structure node at this scope.
     public var node: ImapBodyStructure {
         switch self {
         case .message(let node):
@@ -146,6 +324,7 @@ public enum ImapBodySectionScope: Sendable, Equatable {
         }
     }
 
+    /// The part ID if this is a part scope, or `nil` for message scope.
     public var partId: String? {
         switch self {
         case .message:
@@ -156,10 +335,21 @@ public enum ImapBodySectionScope: Sendable, Equatable {
     }
 }
 
+/// The result of resolving a body section against a body structure.
+///
+/// This type provides information about which part of the message a section
+/// specifier refers to, including the content type and any multipart boundary.
 public struct ImapBodySectionResolution: Sendable, Equatable {
+    /// The scope of the resolution (message or part).
     public let scope: ImapBodySectionScope
+
+    /// The subsection specifier (HEADER, TEXT, MIME), if any.
     public let subsection: ImapFetchBodySubsection?
 
+    /// The content type of the resolved section.
+    ///
+    /// For single parts, this is the full type/subtype (e.g., "TEXT/PLAIN").
+    /// For multipart containers, this is "MULTIPART/subtype".
     public var contentType: String? {
         switch scope.node {
         case .single(let part):
@@ -169,6 +359,7 @@ public struct ImapBodySectionResolution: Sendable, Equatable {
         }
     }
 
+    /// The multipart subtype if the resolved section is a multipart.
     public var multipartSubtype: String? {
         if case let .multipart(multipart) = scope.node {
             return multipart.subtype
@@ -176,6 +367,7 @@ public struct ImapBodySectionResolution: Sendable, Equatable {
         return nil
     }
 
+    /// The multipart parameters if the resolved section is a multipart.
     public var multipartParameters: [String: String] {
         if case let .multipart(multipart) = scope.node {
             return multipart.parameters
@@ -183,6 +375,7 @@ public struct ImapBodySectionResolution: Sendable, Equatable {
         return [:]
     }
 
+    /// The MIME boundary parameter for multipart sections.
     public var boundary: String? {
         multipartParameters["BOUNDARY"]
     }

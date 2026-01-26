@@ -7,36 +7,115 @@
 import Foundation
 import MimeFoundation
 
+/// The result of a RETR or TOP command, containing the response and message data.
+///
+/// `Pop3MessageData` provides convenient methods for working with downloaded
+/// message data, including header parsing and MIME message conversion.
+///
+/// ## Overview
+///
+/// This struct is returned by methods like ``Pop3Folder/retrData(_:)`` and
+/// ``Pop3Folder/topData(_:lines:)``. It contains both the server's response
+/// and the raw message bytes, with helper methods for common operations.
+///
+/// ## Usage
+///
+/// ```swift
+/// // Download a message
+/// let messageData = try folder.retrData(1)
+///
+/// // Parse as a MIME message
+/// let message = try messageData.message()
+/// print("Subject: \(message.subject ?? "No subject")")
+///
+/// // Or just get headers
+/// let headers = messageData.parseHeaders()
+/// if let subject = headers["Subject"]?.value {
+///     print("Subject: \(subject)")
+/// }
+///
+/// // Access raw bytes
+/// let rawMessage = messageData.data
+/// let headerBytes = messageData.headerBytes()
+/// let bodyBytes = messageData.bodyBytes()
+///
+/// // Convert to string
+/// if let text = messageData.string() {
+///     print(text)
+/// }
+/// ```
+///
+/// ## See Also
+///
+/// - ``Pop3Folder/retrData(_:)`` for downloading messages
+/// - ``Pop3Folder/topData(_:lines:)`` for downloading headers and previews
 public struct Pop3MessageData: Sendable, Equatable {
+    /// The server's response to the RETR or TOP command.
     public let response: Pop3Response
+
+    /// The raw message data as bytes.
+    ///
+    /// For RETR, this is the complete message. For TOP, this includes the headers
+    /// and the requested number of body lines.
     public let data: [UInt8]
 
+    /// Initializes message data with a response and raw bytes.
+    ///
+    /// - Parameters:
+    ///   - response: The server's response.
+    ///   - data: The raw message bytes.
     public init(response: Pop3Response, data: [UInt8]) {
         self.response = response
         self.data = data
     }
 
+    /// Extracts the header portion of the message as raw bytes.
+    ///
+    /// Headers are separated from the body by a blank line (CRLF CRLF).
+    ///
+    /// - Returns: The header bytes, not including the separating blank line.
     public func headerBytes() -> [UInt8] {
         Pop3HeaderParser.split(data).headers
     }
 
+    /// Extracts the body portion of the message as raw bytes.
+    ///
+    /// - Returns: The body bytes, or an empty array if no body is present.
     public func bodyBytes() -> [UInt8] {
         Pop3HeaderParser.split(data).body
     }
 
+    /// Parses the message headers.
+    ///
+    /// This method parses the header portion of the message and returns
+    /// a ``HeaderList`` for easy access to individual headers.
+    ///
+    /// - Returns: The parsed headers.
     public func parseHeaders() -> HeaderList {
         Pop3HeaderParser.parse(data).headers
     }
 
+    /// Parses both headers and extracts the body bytes.
+    ///
+    /// - Returns: A tuple containing the parsed headers and raw body bytes.
     public func parseHeaderBody() -> (headers: HeaderList, body: [UInt8]) {
         Pop3HeaderParser.parse(data)
     }
 
+    /// Parses the data as a complete MIME message.
+    ///
+    /// - Parameter options: Parser options for controlling MIME parsing behavior.
+    /// - Returns: The parsed ``MimeMessage``.
+    /// - Throws: An error if the data cannot be parsed as a valid MIME message.
     public func message(options: ParserOptions = .default) throws -> MimeMessage {
         let stream = MemoryStream(data, writable: false)
         return try MimeMessage.load(options, stream)
     }
 
+    /// Converts the message data to a string.
+    ///
+    /// - Parameter encoding: The string encoding to use (default: UTF-8).
+    /// - Returns: The message as a string, or nil if the encoding fails.
     public func string(encoding: String.Encoding = .utf8) -> String? {
         String(data: Data(data), encoding: encoding)
     }

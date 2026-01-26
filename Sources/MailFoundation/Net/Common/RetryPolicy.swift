@@ -13,10 +13,55 @@ import Foundation
 
 // MARK: - Retry Policy Configuration
 
-/// Configuration for retry behavior on transient failures.
+/// Configuration for automatic retry behavior on transient failures.
 ///
-/// Retry policies define how operations should be retried when they fail
-/// with transient errors (timeouts, temporary server issues, etc.).
+/// `RetryPolicy` defines how operations should be retried when they fail
+/// with transient errors such as timeouts, temporary server unavailability,
+/// or network issues. It supports exponential backoff with optional jitter
+/// to prevent thundering herd problems.
+///
+/// ## Exponential Backoff
+///
+/// The delay between retries increases exponentially:
+/// ```
+/// delay = initialDelayMs * (backoffMultiplier ^ attemptNumber)
+/// ```
+///
+/// For example, with default settings (1s initial, 2x multiplier):
+/// - Attempt 1: 1 second delay
+/// - Attempt 2: 2 seconds delay
+/// - Attempt 3: 4 seconds delay
+///
+/// ## Jitter
+///
+/// When ``useJitter`` is enabled, up to 25% random variation is added
+/// to prevent multiple clients from retrying simultaneously.
+///
+/// ## Preset Policies
+///
+/// Several preset policies are available:
+/// - ``default``: 3 retries, 1s initial, exponential backoff
+/// - ``aggressive``: 5 retries, 500ms initial, faster recovery
+/// - ``conservative``: 2 retries, 2s initial, longer delays
+/// - ``none``: No retries, fail immediately
+///
+/// ## Example Usage
+///
+/// ```swift
+/// // Using default retry policy
+/// let result = try await withRetry(policy: .default) {
+///     try await mailService.connect()
+/// }
+///
+/// // Custom policy
+/// let policy = RetryPolicy(maxRetries: 5, initialDelayMs: 500)
+/// let result = try await withRetry(policy: policy) {
+///     try await sendMessage()
+/// }
+/// ```
+///
+/// - Note: MailKit does not include a formal retry framework. This
+///   implementation follows common retry patterns used in distributed systems.
 public struct RetryPolicy: Sendable, Equatable {
     /// Maximum number of retry attempts (not including the initial attempt).
     public let maxRetries: Int

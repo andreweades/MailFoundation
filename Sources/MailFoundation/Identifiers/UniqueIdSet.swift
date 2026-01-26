@@ -4,11 +4,46 @@
 // Ported from MailKit (C#) to Swift.
 //
 
+/// An error that occurs when working with a unique identifier set.
 public enum UniqueIdSetParseError: Error, Sendable {
+    /// The token could not be parsed as a valid unique identifier set.
     case invalidToken
+
+    /// The maximum length parameter is invalid (negative).
     case invalidMaxLength
 }
 
+/// A set of unique identifiers.
+///
+/// When dealing with a large number of unique identifiers, it may be more efficient
+/// to use a `UniqueIdSet` than a typical array of `UniqueId` values. The set internally
+/// stores contiguous ranges of identifiers, which can significantly reduce memory usage
+/// and improve serialization efficiency.
+///
+/// The set supports different sort orders:
+/// - `.ascending`: UIDs are maintained in ascending order, enabling efficient binary search.
+/// - `.descending`: UIDs are maintained in descending order, enabling efficient binary search.
+/// - `.none`: UIDs are stored in insertion order without sorting.
+///
+/// ## Example
+///
+/// ```swift
+/// // Create a new set with ascending sort order
+/// var set = UniqueIdSet(sortOrder: .ascending)
+///
+/// // Add unique identifiers
+/// set.add(UniqueId(id: 5))
+/// set.add(UniqueId(id: 3))
+/// set.add(UniqueId(id: 4))
+///
+/// // The set efficiently stores contiguous ranges
+/// print(set) // "3:5"
+///
+/// // Check membership
+/// if set.contains(UniqueId(id: 4)) {
+///     print("Contains UID 4")
+/// }
+/// ```
 public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
     private struct Range: Sendable {
         var start: UInt32
@@ -99,18 +134,41 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
     private var ranges: [Range] = []
     private var totalCount: Int64 = 0
 
+    /// The sort order of the unique identifiers in the set.
+    ///
+    /// When the sort order is `.ascending` or `.descending`, binary search is used
+    /// for efficient lookups and insertions. When the sort order is `.none`, linear
+    /// search is used.
     public private(set) var sortOrder: SortOrder
+
+    /// The UIDVALIDITY of the containing folder.
+    ///
+    /// The validity value is used to detect when the unique identifiers in a mailbox
+    /// have been invalidated. A value of `0` indicates that the validity is not known.
     public private(set) var validity: UInt32
 
+    /// Creates a new unique identifier set with the specified validity and sort order.
+    ///
+    /// - Parameters:
+    ///   - validity: The UIDVALIDITY of the containing folder.
+    ///   - sortOrder: The sorting order to use for the unique identifiers.
     public init(validity: UInt32, sortOrder: SortOrder = .none) {
         self.validity = validity
         self.sortOrder = sortOrder
     }
 
+    /// Creates a new unique identifier set with the specified sort order.
+    ///
+    /// - Parameter sortOrder: The sorting order to use for the unique identifiers.
     public init(sortOrder: SortOrder = .none) {
         self.init(validity: 0, sortOrder: sortOrder)
     }
 
+    /// Creates a new unique identifier set containing the specified unique identifiers.
+    ///
+    /// - Parameters:
+    ///   - uids: An array of unique identifiers to add to the set.
+    ///   - sortOrder: The sorting order to use for the unique identifiers.
     public init(_ uids: [UniqueId], sortOrder: SortOrder = .none) {
         self.init(sortOrder: sortOrder)
         for uid in uids {
@@ -118,10 +176,14 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         }
     }
 
+    /// The number of unique identifiers in the set.
+    ///
+    /// For very large sets, this value is capped at `Int.max`.
     public var count: Int {
         totalCount > Int64(Int.max) ? Int.max : Int(totalCount)
     }
 
+    /// Indicates whether the set contains no unique identifiers.
     public var isEmpty: Bool {
         totalCount == 0
     }
@@ -319,6 +381,17 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         ranges.append(Range(start: uid, end: uid))
     }
 
+    /// Adds a unique identifier to the set.
+    ///
+    /// If the set has a sort order of `.ascending` or `.descending`, the identifier
+    /// is inserted in the appropriate position using binary insertion. If the sort
+    /// order is `.none`, the identifier is appended to the end.
+    ///
+    /// Adjacent identifiers are automatically merged into ranges for efficient storage.
+    ///
+    /// - Parameter uid: The unique identifier to add.
+    ///
+    /// - Precondition: `uid` must be valid (non-zero id).
     public mutating func add(_ uid: UniqueId) {
         precondition(uid.isValid, "Invalid unique identifier.")
 
@@ -338,21 +411,38 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         }
     }
 
+    /// Adds multiple unique identifiers to the set.
+    ///
+    /// - Parameter uids: An array of unique identifiers to add.
     public mutating func add(contentsOf uids: [UniqueId]) {
         for uid in uids {
             add(uid)
         }
     }
 
+    /// Removes all unique identifiers from the set.
+    ///
+    /// After calling this method, `count` will be `0` and `isEmpty` will be `true`.
     public mutating func clear() {
         ranges.removeAll(keepingCapacity: true)
         totalCount = 0
     }
 
+    /// Checks if the set contains the specified unique identifier.
+    ///
+    /// - Parameter uid: The unique identifier to check.
+    ///
+    /// - Returns: `true` if the set contains the specified unique identifier; otherwise, `false`.
     public func contains(_ uid: UniqueId) -> Bool {
         indexOfRange(for: uid.id) != nil
     }
 
+    /// Gets the index of the specified unique identifier within the set.
+    ///
+    /// - Parameter uid: The unique identifier to find.
+    ///
+    /// - Returns: The zero-based index of the unique identifier in the set,
+    ///   or `nil` if the unique identifier is not in the set.
     public func index(of uid: UniqueId) -> Int? {
         var offset = 0
         for range in ranges {
@@ -364,6 +454,13 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         return nil
     }
 
+    /// Gets the unique identifier at the specified index.
+    ///
+    /// - Parameter index: The zero-based index of the unique identifier to retrieve.
+    ///
+    /// - Returns: The unique identifier at the specified index.
+    ///
+    /// - Precondition: `index` must be in the range `0..<count`.
     public func uniqueId(at index: Int) -> UniqueId {
         precondition(index >= 0 && Int64(index) < totalCount, "Index out of range.")
 
@@ -381,6 +478,11 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         preconditionFailure("Index out of range.")
     }
 
+    /// Removes the unique identifier at the specified index.
+    ///
+    /// - Parameter index: The zero-based index of the unique identifier to remove.
+    ///
+    /// - Precondition: `index` must be in the range `0..<count`.
     public mutating func remove(at index: Int) {
         precondition(index >= 0 && Int64(index) < totalCount, "Index out of range.")
 
@@ -398,6 +500,11 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         }
     }
 
+    /// Removes the specified unique identifier from the set.
+    ///
+    /// - Parameter uid: The unique identifier to remove.
+    ///
+    /// - Returns: `true` if the unique identifier was removed; otherwise, `false`.
     @discardableResult
     public mutating func remove(_ uid: UniqueId) -> Bool {
         guard let rangeIndex = indexOfRange(for: uid.id) else {
@@ -440,6 +547,14 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         totalCount -= 1
     }
 
+    /// Copies all of the unique identifiers in the set to the specified array.
+    ///
+    /// - Parameters:
+    ///   - array: The array to copy the unique identifiers to.
+    ///   - index: The index in the array at which to start copying.
+    ///
+    /// - Precondition: `index` must be non-negative and within the array bounds.
+    /// - Precondition: The array must have enough space to hold all copied elements.
     public func copy(to array: inout [UniqueId], startingAt index: Int) {
         precondition(index >= 0, "Index out of range.")
         precondition(index <= array.count, "Index out of range.")
@@ -452,6 +567,12 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         }
     }
 
+    /// Returns an iterator over the unique identifiers in the set.
+    ///
+    /// The iterator yields unique identifiers in the order determined by the set's
+    /// sort order and the order in which ranges were added.
+    ///
+    /// - Returns: An iterator that yields `UniqueId` values.
     public func makeIterator() -> AnyIterator<UniqueId> {
         var rangeIndex = 0
         var rangeIterator: AnyIterator<UInt32>? = ranges.first?.makeIterator()
@@ -471,6 +592,30 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         }
     }
 
+    /// Formats the set as multiple strings that fit within the specified character length.
+    ///
+    /// This is useful for IMAP commands that have a maximum command length. The set
+    /// is serialized as comma-separated ranges (e.g., "1:5,10,15:20") and split into
+    /// multiple strings if needed.
+    ///
+    /// - Parameter maxLength: The maximum length of any returned string.
+    ///
+    /// - Returns: An array of strings representing the set, each within the maximum length.
+    ///
+    /// - Throws: `UniqueIdSetParseError.invalidMaxLength` if `maxLength` is negative.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// var set = UniqueIdSet(sortOrder: .ascending)
+    /// set.add(UniqueId(id: 1))
+    /// set.add(UniqueId(id: 2))
+    /// set.add(UniqueId(id: 3))
+    /// set.add(UniqueId(id: 10))
+    ///
+    /// let subsets = try set.serializedSubsets(maxLength: 10)
+    /// // Returns ["1:3,10"] or split into multiple strings if longer
+    /// ```
     public func serializedSubsets(maxLength: Int) throws -> [String] {
         guard maxLength >= 0 else {
             throw UniqueIdSetParseError.invalidMaxLength
@@ -496,14 +641,45 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         return subsets
     }
 
+    /// Returns a string representation of the unique identifier set.
+    ///
+    /// The format is a comma-separated list of UIDs and ranges (e.g., "1:3,5,10:15").
+    /// The `*` character represents `UInt32.max`.
     public var description: String {
         (try? serializedSubsets(maxLength: Int.max).first) ?? ""
     }
 
+    /// Formats an array of unique identifiers as a string.
+    ///
+    /// Contiguous identifiers are automatically combined into ranges for efficient
+    /// representation.
+    ///
+    /// - Parameter uids: The unique identifiers to format.
+    ///
+    /// - Returns: A string representation of the unique identifiers.
+    ///
+    /// - Throws: `UniqueIdSetParseError.invalidMaxLength` if an internal error occurs.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let uids = [UniqueId(id: 1), UniqueId(id: 2), UniqueId(id: 3), UniqueId(id: 10)]
+    /// let str = try UniqueIdSet.toString(uids)
+    /// print(str) // "1:3,10"
+    /// ```
     public static func toString(_ uids: [UniqueId]) throws -> String {
         return try serializedSubsets(for: uids, maxLength: Int.max).first ?? ""
     }
 
+    /// Formats a unique identifier range as multiple strings.
+    ///
+    /// - Parameters:
+    ///   - range: The unique identifier range to format.
+    ///   - maxLength: The maximum length of any returned string.
+    ///
+    /// - Returns: An array containing the string representation of the range.
+    ///
+    /// - Throws: `UniqueIdSetParseError.invalidMaxLength` if `maxLength` is negative.
     public static func serializedSubsets(for range: UniqueIdRange, maxLength: Int) throws -> [String] {
         guard maxLength >= 0 else {
             throw UniqueIdSetParseError.invalidMaxLength
@@ -511,10 +687,34 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         return [range.description]
     }
 
+    /// Formats a unique identifier set as multiple strings.
+    ///
+    /// - Parameters:
+    ///   - set: The unique identifier set to format.
+    ///   - maxLength: The maximum length of any returned string.
+    ///
+    /// - Returns: An array of strings representing the set.
+    ///
+    /// - Throws: `UniqueIdSetParseError.invalidMaxLength` if `maxLength` is negative.
     public static func serializedSubsets(for set: UniqueIdSet, maxLength: Int) throws -> [String] {
         return try set.serializedSubsets(maxLength: maxLength)
     }
 
+    /// Formats an array of unique identifiers as multiple strings.
+    ///
+    /// Contiguous identifiers are automatically combined into ranges for efficient
+    /// representation. The output is split into multiple strings if needed to stay
+    /// within the maximum length.
+    ///
+    /// - Parameters:
+    ///   - uids: The unique identifiers to format.
+    ///   - maxLength: The maximum length of any returned string.
+    ///
+    /// - Returns: An array of strings representing the unique identifiers.
+    ///
+    /// - Throws: `UniqueIdSetParseError.invalidMaxLength` if `maxLength` is negative.
+    ///
+    /// - Precondition: All unique identifiers in `uids` must be valid.
     public static func serializedSubsets(for uids: [UniqueId], maxLength: Int) throws -> [String] {
         guard maxLength >= 0 else {
             throw UniqueIdSetParseError.invalidMaxLength
@@ -584,6 +784,15 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         value == UInt32.max ? "*" : String(value)
     }
 
+    /// Attempts to parse a unique identifier set from a string.
+    ///
+    /// - Parameters:
+    ///   - token: The string to parse.
+    ///   - validity: The UIDVALIDITY value to associate with parsed identifiers.
+    ///   - minValue: On return, contains the minimum unique identifier in the set, or `nil`.
+    ///   - maxValue: On return, contains the maximum unique identifier in the set, or `nil`.
+    ///
+    /// - Returns: The parsed `UniqueIdSet`, or `nil` if parsing fails.
     internal static func tryParse(_ token: String, validity: UInt32, minValue: inout UniqueId?, maxValue: inout UniqueId?) -> UniqueIdSet? {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         let bytes = Array(trimmed.utf8)
@@ -686,6 +895,23 @@ public struct UniqueIdSet: Sendable, Sequence, CustomStringConvertible {
         return set
     }
 
+    /// Parses a unique identifier set from a string.
+    ///
+    /// The expected format is a comma-separated list of UIDs and ranges, such as
+    /// "1,3:5,10,15:20". The `*` character can be used to represent `UInt32.max`.
+    ///
+    /// - Parameters:
+    ///   - token: A string containing the unique identifier set to parse.
+    ///   - validity: The UIDVALIDITY value to associate with the parsed identifiers.
+    ///
+    /// - Throws: `UniqueIdSetParseError.invalidToken` if the token cannot be parsed.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let set = try UniqueIdSet(parsing: "1:3,5,10:15", validity: 12345)
+    /// print(set.count) // 10 (1,2,3,5,10,11,12,13,14,15)
+    /// ```
     public init(parsing token: String, validity: UInt32 = 0) throws {
         var minValue: UniqueId?
         var maxValue: UniqueId?

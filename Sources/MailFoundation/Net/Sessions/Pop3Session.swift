@@ -4,18 +4,80 @@
 // Higher-level synchronous POP3 session helpers.
 //
 
+/// A higher-level synchronous POP3 session that manages protocol interactions.
+///
+/// `Pop3Session` wraps the low-level ``Pop3Client`` to provide a convenient
+/// synchronous API for POP3 operations. It handles response waiting, error
+/// conversion, and multiline response parsing.
+///
+/// ## Overview
+///
+/// This class provides methods for all standard POP3 operations:
+/// - Connection and authentication
+/// - Message listing (STAT, LIST, UIDL)
+/// - Message retrieval (RETR, TOP)
+/// - Message management (DELE, RSET, NOOP)
+/// - Capabilities query (CAPA)
+/// - TLS upgrade (STLS)
+///
+/// ## Usage
+///
+/// For most use cases, prefer ``Pop3MailStore`` which provides a higher-level
+/// abstraction. Use `Pop3Session` directly when you need more control over
+/// the protocol interactions.
+///
+/// ```swift
+/// let session = Pop3Session(transport: myTransport)
+///
+/// // Connect and authenticate
+/// let greeting = try session.connect()
+/// try session.authenticate(user: "user@example.com", password: "secret")
+///
+/// // Get mailbox status
+/// let stat = try session.stat()
+/// print("Messages: \(stat.count)")
+///
+/// // Retrieve a message
+/// let messageData = try session.retrData(1)
+/// let message = try messageData.message()
+///
+/// // Clean up
+/// session.disconnect()
+/// ```
+///
+/// ## Threading
+///
+/// This class is not thread-safe. If you need concurrent access, use
+/// ``AsyncPop3Session`` or synchronize access externally.
+///
+/// ## See Also
+///
+/// - ``Pop3MailStore`` for high-level mail store operations
+/// - ``AsyncPop3Session`` for async/await support
+/// - ``Pop3Client`` for low-level protocol access
 public final class Pop3Session {
     private let client: Pop3Client
     private let transport: Transport
     private let maxReads: Int
     private var lastGreeting: Pop3Response?
 
+    /// Initializes a new POP3 session.
+    ///
+    /// - Parameters:
+    ///   - transport: The transport to use for communication.
+    ///   - protocolLogger: An optional logger for protocol-level debugging.
+    ///   - maxReads: Maximum read attempts when waiting for responses.
     public init(transport: Transport, protocolLogger: ProtocolLoggerType = NullProtocolLogger(), maxReads: Int = 10) {
         self.transport = transport
         self.client = Pop3Client(protocolLogger: protocolLogger)
         self.maxReads = maxReads
     }
 
+    /// Connects to the POP3 server and waits for the greeting.
+    ///
+    /// - Returns: The server's greeting response.
+    /// - Throws: ``SessionError/timeout`` if no response is received,
+    ///           or ``Pop3CommandError`` if the server rejects the connection.
     @discardableResult
     public func connect() throws -> Pop3Response {
         client.connect(transport: transport)
@@ -29,12 +91,23 @@ public final class Pop3Session {
         return greeting
     }
 
+    /// Disconnects from the POP3 server.
+    ///
+    /// This method sends the QUIT command, causing any messages marked for
+    /// deletion to be permanently removed, then closes the transport.
     public func disconnect() {
         _ = client.send(.quit)
         transport.close()
         lastGreeting = nil
     }
 
+    /// Authenticates using the USER and PASS commands.
+    ///
+    /// - Parameters:
+    ///   - user: The username or email address.
+    ///   - password: The user's password.
+    /// - Returns: A tuple containing the responses to both commands.
+    /// - Throws: An error if authentication fails.
     public func authenticate(user: String, password: String) throws -> (user: Pop3Response, pass: Pop3Response) {
         _ = client.send(.user(user))
         try ensureWrite()
@@ -57,6 +130,10 @@ public final class Pop3Session {
         return (user: userResponse, pass: passResponse)
     }
 
+    /// Queries the server's capabilities.
+    ///
+    /// - Returns: The parsed capabilities.
+    /// - Throws: An error if the CAPA command fails.
     public func capability() throws -> Pop3Capabilities {
         client.expectMultilineResponse()
         _ = client.send(.capa)
@@ -75,6 +152,13 @@ public final class Pop3Session {
         throw SessionError.timeout
     }
 
+    /// Authenticates using APOP with a pre-computed digest.
+    ///
+    /// - Parameters:
+    ///   - user: The username.
+    ///   - digest: The pre-computed MD5 digest.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails.
     public func apop(user: String, digest: String) throws -> Pop3Response {
         _ = client.send(.apop(user, digest))
         try ensureWrite()
@@ -87,6 +171,14 @@ public final class Pop3Session {
         return response
     }
 
+    /// Authenticates using APOP with automatic digest computation.
+    ///
+    /// - Parameters:
+    ///   - user: The username.
+    ///   - password: The password (used to compute the digest).
+    ///   - greeting: Optional greeting response containing the challenge. If nil, uses the stored greeting.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails or APOP is not available.
     public func authenticateApop(
         user: String,
         password: String,
@@ -102,6 +194,13 @@ public final class Pop3Session {
         return try apop(user: user, digest: digest)
     }
 
+    /// Performs SASL authentication with a simple mechanism (no challenge-response).
+    ///
+    /// - Parameters:
+    ///   - mechanism: The SASL mechanism name.
+    ///   - initialResponse: Optional initial response data.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails.
     public func auth(mechanism: String, initialResponse: String? = nil) throws -> Pop3Response {
         _ = client.send(.auth(mechanism, initialResponse: initialResponse))
         try ensureWrite()
@@ -114,6 +213,14 @@ public final class Pop3Session {
         return response
     }
 
+    /// Performs SASL authentication with challenge-response.
+    ///
+    /// - Parameters:
+    ///   - mechanism: The SASL mechanism name.
+    ///   - initialResponse: Optional initial response data.
+    ///   - responder: A closure that generates responses to server challenges.
+    /// - Returns: The server's final response.
+    /// - Throws: An error if authentication fails.
     public func auth(
         mechanism: String,
         initialResponse: String? = nil,
@@ -141,6 +248,11 @@ public final class Pop3Session {
         return response
     }
 
+    /// Performs SASL authentication using a ``Pop3Authentication`` configuration.
+    ///
+    /// - Parameter authentication: The authentication configuration.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails.
     public func authenticate(_ authentication: Pop3Authentication) throws -> Pop3Response {
         if let responder = authentication.responder {
             return try auth(
@@ -155,6 +267,13 @@ public final class Pop3Session {
         )
     }
 
+    /// Authenticates using CRAM-MD5.
+    ///
+    /// - Parameters:
+    ///   - user: The username.
+    ///   - password: The password.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails or CRAM-MD5 is unavailable.
     public func authenticateCramMd5(user: String, password: String) throws -> Pop3Response {
         guard let authentication = Pop3Sasl.cramMd5(username: user, password: password) else {
             throw SessionError.pop3Error(message: "CRAM-MD5 is not available.")
@@ -162,11 +281,27 @@ public final class Pop3Session {
         return try authenticate(authentication)
     }
 
+    /// Authenticates using XOAUTH2.
+    ///
+    /// - Parameters:
+    ///   - user: The username.
+    ///   - accessToken: The OAuth 2.0 access token.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails.
     public func authenticateXoauth2(user: String, accessToken: String) throws -> Pop3Response {
         let authentication = Pop3Sasl.xoauth2(username: user, accessToken: accessToken)
         return try authenticate(authentication)
     }
 
+    /// Authenticates using SASL with automatic mechanism selection.
+    ///
+    /// - Parameters:
+    ///   - user: The username.
+    ///   - password: The password.
+    ///   - capabilities: Optional capabilities. If nil, queries the server.
+    ///   - mechanisms: Optional list of allowed mechanisms.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails or no mechanism is supported.
     public func authenticateSasl(
         user: String,
         password: String,
@@ -192,6 +327,15 @@ public final class Pop3Session {
         return try authenticate(authentication)
     }
 
+    /// Authenticates using SASL with an OAuth access token.
+    ///
+    /// - Parameters:
+    ///   - user: The username.
+    ///   - accessToken: The OAuth 2.0 access token.
+    ///   - capabilities: Optional capabilities. If nil, queries the server.
+    ///   - mechanisms: Optional list of allowed mechanisms.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails or XOAUTH2 is not supported.
     public func authenticateSasl(
         user: String,
         accessToken: String,
@@ -213,6 +357,10 @@ public final class Pop3Session {
         return try authenticateXoauth2(user: user, accessToken: accessToken)
     }
 
+    /// Sends a NOOP command.
+    ///
+    /// - Returns: The server's response.
+    /// - Throws: An error if not authenticated or the command fails.
     public func noop() throws -> Pop3Response {
         try ensureAuthenticated()
         _ = client.send(.noop)
@@ -226,6 +374,10 @@ public final class Pop3Session {
         return response
     }
 
+    /// Resets the session, unmarking messages marked for deletion.
+    ///
+    /// - Returns: The server's response.
+    /// - Throws: An error if not authenticated or the command fails.
     public func rset() throws -> Pop3Response {
         try ensureAuthenticated()
         _ = client.send(.rset)
@@ -239,6 +391,11 @@ public final class Pop3Session {
         return response
     }
 
+    /// Marks a message for deletion.
+    ///
+    /// - Parameter index: The 1-based message index.
+    /// - Returns: The server's response.
+    /// - Throws: An error if not authenticated or the command fails.
     public func dele(_ index: Int) throws -> Pop3Response {
         try ensureAuthenticated()
         _ = client.send(.dele(index))
@@ -252,6 +409,11 @@ public final class Pop3Session {
         return response
     }
 
+    /// Gets the size of a specific message.
+    ///
+    /// - Parameter index: The 1-based message index.
+    /// - Returns: The list item containing the message size.
+    /// - Throws: An error if not authenticated or the command fails.
     public func list(_ index: Int) throws -> Pop3ListItem {
         try ensureAuthenticated()
         _ = client.send(.list(index))
@@ -268,6 +430,11 @@ public final class Pop3Session {
         throw pop3CommandError(from: response)
     }
 
+    /// Gets the unique identifier for a specific message.
+    ///
+    /// - Parameter index: The 1-based message index.
+    /// - Returns: The UIDL item containing the unique identifier.
+    /// - Throws: An error if not authenticated or the command fails.
     public func uidl(_ index: Int) throws -> Pop3UidlItem {
         try ensureAuthenticated()
         _ = client.send(.uidl(index))
@@ -284,6 +451,11 @@ public final class Pop3Session {
         throw pop3CommandError(from: response)
     }
 
+    /// Retrieves a message as an array of lines.
+    ///
+    /// - Parameter index: The 1-based message index.
+    /// - Returns: The message content as lines.
+    /// - Throws: An error if not authenticated or the command fails.
     public func retr(_ index: Int) throws -> [String] {
         try ensureAuthenticated()
         client.expectMultilineResponse()
@@ -302,6 +474,11 @@ public final class Pop3Session {
         throw SessionError.timeout
     }
 
+    /// Retrieves a message as structured data.
+    ///
+    /// - Parameter index: The 1-based message index.
+    /// - Returns: The message data.
+    /// - Throws: An error if not authenticated or the command fails.
     public func retrData(_ index: Int) throws -> Pop3MessageData {
         try ensureAuthenticated()
         _ = client.send(.retr(index))
@@ -310,6 +487,11 @@ public final class Pop3Session {
         return Pop3MessageData(response: response, data: data)
     }
 
+    /// Retrieves a message as raw bytes.
+    ///
+    /// - Parameter index: The 1-based message index.
+    /// - Returns: The message content as bytes.
+    /// - Throws: An error if not authenticated or the command fails.
     public func retrRaw(_ index: Int) throws -> [UInt8] {
         try ensureAuthenticated()
         _ = client.send(.retr(index))
@@ -317,6 +499,12 @@ public final class Pop3Session {
         return try waitForMultilineData()
     }
 
+    /// Retrieves a message in streaming fashion.
+    ///
+    /// - Parameters:
+    ///   - index: The 1-based message index.
+    ///   - sink: A closure called with each chunk of data.
+    /// - Throws: An error if not authenticated or the command fails.
     public func retrStream(_ index: Int, sink: ([UInt8]) throws -> Void) throws {
         try ensureAuthenticated()
         _ = client.send(.retr(index))
@@ -324,6 +512,13 @@ public final class Pop3Session {
         try streamMultilineData(into: sink)
     }
 
+    /// Retrieves message headers and partial body.
+    ///
+    /// - Parameters:
+    ///   - index: The 1-based message index.
+    ///   - lines: The number of body lines to retrieve.
+    /// - Returns: The headers and body lines.
+    /// - Throws: An error if not authenticated or the command fails.
     public func top(_ index: Int, lines: Int) throws -> [String] {
         try ensureAuthenticated()
         client.expectMultilineResponse()
@@ -342,6 +537,13 @@ public final class Pop3Session {
         throw SessionError.timeout
     }
 
+    /// Retrieves message headers and partial body as structured data.
+    ///
+    /// - Parameters:
+    ///   - index: The 1-based message index.
+    ///   - lines: The number of body lines to retrieve.
+    /// - Returns: The message data.
+    /// - Throws: An error if not authenticated or the command fails.
     public func topData(_ index: Int, lines: Int) throws -> Pop3MessageData {
         try ensureAuthenticated()
         _ = client.send(.top(index, lines: lines))
@@ -350,6 +552,13 @@ public final class Pop3Session {
         return Pop3MessageData(response: response, data: data)
     }
 
+    /// Retrieves message headers and partial body as raw bytes.
+    ///
+    /// - Parameters:
+    ///   - index: The 1-based message index.
+    ///   - lines: The number of body lines to retrieve.
+    /// - Returns: The data as bytes.
+    /// - Throws: An error if not authenticated or the command fails.
     public func topRaw(_ index: Int, lines: Int) throws -> [UInt8] {
         try ensureAuthenticated()
         _ = client.send(.top(index, lines: lines))
@@ -357,6 +566,13 @@ public final class Pop3Session {
         return try waitForMultilineData()
     }
 
+    /// Retrieves message headers and partial body in streaming fashion.
+    ///
+    /// - Parameters:
+    ///   - index: The 1-based message index.
+    ///   - lines: The number of body lines to retrieve.
+    ///   - sink: A closure called with each chunk of data.
+    /// - Throws: An error if not authenticated or the command fails.
     public func topStream(_ index: Int, lines: Int, sink: ([UInt8]) throws -> Void) throws {
         try ensureAuthenticated()
         _ = client.send(.top(index, lines: lines))
@@ -364,6 +580,10 @@ public final class Pop3Session {
         try streamMultilineData(into: sink)
     }
 
+    /// Lists all messages with their sizes.
+    ///
+    /// - Returns: An array of list items.
+    /// - Throws: An error if not authenticated or the command fails.
     public func list() throws -> [Pop3ListItem] {
         try ensureAuthenticated()
         client.expectMultilineResponse()
@@ -382,6 +602,10 @@ public final class Pop3Session {
         throw SessionError.timeout
     }
 
+    /// Lists unique identifiers for all messages.
+    ///
+    /// - Returns: An array of UIDL items.
+    /// - Throws: An error if not authenticated or the command fails.
     public func uidl() throws -> [Pop3UidlItem] {
         try ensureAuthenticated()
         client.expectMultilineResponse()
@@ -400,6 +624,10 @@ public final class Pop3Session {
         throw SessionError.timeout
     }
 
+    /// Gets mailbox statistics.
+    ///
+    /// - Returns: The message count and total size.
+    /// - Throws: An error if not authenticated or the command fails.
     public func stat() throws -> Pop3StatResponse {
         try ensureAuthenticated()
         _ = client.send(.stat)
@@ -413,6 +641,10 @@ public final class Pop3Session {
         throw pop3CommandError(from: response)
     }
 
+    /// Gets the highest accessed message number.
+    ///
+    /// - Returns: The highest accessed message number.
+    /// - Throws: An error if not authenticated or the command fails.
     public func last() throws -> Int {
         try ensureAuthenticated()
         _ = client.send(.last)
@@ -426,16 +658,33 @@ public final class Pop3Session {
         return value
     }
 
+    /// Retrieves a message and assembles it as bytes.
+    ///
+    /// - Parameter index: The 1-based message index.
+    /// - Returns: The message as bytes.
+    /// - Throws: An error if not authenticated or the command fails.
     public func retrBytes(_ index: Int) throws -> [UInt8] {
         let lines = try retr(index)
         return assembleBytes(from: lines)
     }
 
+    /// Retrieves message headers and partial body and assembles as bytes.
+    ///
+    /// - Parameters:
+    ///   - index: The 1-based message index.
+    ///   - lines: The number of body lines to retrieve.
+    /// - Returns: The data as bytes.
+    /// - Throws: An error if not authenticated or the command fails.
     public func topBytes(_ index: Int, lines: Int) throws -> [UInt8] {
         let result = try top(index, lines: lines)
         return assembleBytes(from: result)
     }
 
+    /// Upgrades the connection to TLS using STARTTLS.
+    ///
+    /// - Parameter validateCertificate: Whether to validate the server's certificate.
+    /// - Returns: The server's response.
+    /// - Throws: An error if the transport doesn't support STARTTLS or the command fails.
     public func startTls(validateCertificate: Bool = true) throws -> Pop3Response {
         guard let tlsTransport = transport as? StartTlsTransport else {
             throw SessionError.startTlsNotSupported

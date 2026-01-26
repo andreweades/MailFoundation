@@ -4,6 +4,33 @@
 // IMAP mailbox attribute modeling.
 //
 
+/// Represents an attribute of an IMAP mailbox.
+///
+/// Mailbox attributes are returned by the LIST and LSUB commands and provide
+/// information about the mailbox's properties and special uses.
+///
+/// ## Standard Attributes
+///
+/// - `hasChildren`, `hasNoChildren` - Whether the mailbox has subfolders
+/// - `noSelect` - Mailbox cannot be selected (folder container only)
+/// - `noInferiors` - Cannot create subfolders under this mailbox
+/// - `marked`, `unmarked` - Interest markers for the mailbox
+///
+/// ## Special-Use Attributes (RFC 6154)
+///
+/// - `inbox` - The INBOX folder
+/// - `all` - All messages (Gmail "All Mail")
+/// - `archive` - Archive folder
+/// - `drafts` - Drafts folder
+/// - `flagged` - Starred/flagged messages
+/// - `junk` - Spam folder
+/// - `sent` - Sent messages
+/// - `trash` - Deleted messages
+///
+/// ## See Also
+///
+/// - ``ImapMailbox``
+/// - ``ImapFolder``
 public enum ImapMailboxAttribute: Sendable, Equatable {
     case hasChildren
     case hasNoChildren
@@ -82,6 +109,10 @@ public enum ImapMailboxAttribute: Sendable, Equatable {
         }
     }
 
+    /// Whether this attribute indicates a special-use folder.
+    ///
+    /// Special-use folders are defined in RFC 6154 and include archive, drafts,
+    /// flagged, junk, sent, trash, and important.
     public var isSpecialUse: Bool {
         switch self {
         case .all, .archive, .drafts, .flagged, .junk, .sent, .trash, .important:
@@ -92,14 +123,70 @@ public enum ImapMailboxAttribute: Sendable, Equatable {
     }
 }
 
+/// Represents an IMAP mailbox (folder) with its metadata.
+///
+/// An `ImapMailbox` contains the mailbox name, hierarchy delimiter, and attributes
+/// as returned by the LIST or LSUB command. This is the raw mailbox information;
+/// for folder operations, use ``ImapFolder``.
+///
+/// ## Properties
+///
+/// - `name` - The encoded mailbox name (may contain modified UTF-7)
+/// - `decodedName` - The human-readable decoded name
+/// - `delimiter` - The hierarchy separator (e.g., "/" or ".")
+/// - `attributes` - The mailbox attributes (e.g., `\Noselect`, `\HasChildren`)
+///
+/// ## Example
+///
+/// ```swift
+/// let folders = try store.getFolders(reference: "", pattern: "*")
+/// for folder in folders {
+///     let mailbox = folder.mailbox
+///     print("Name: \(mailbox.decodedName)")
+///     if let special = mailbox.specialUse {
+///         print("Special use: \(special)")
+///     }
+///     if mailbox.isSelectable {
+///         print("Can be opened")
+///     }
+/// }
+/// ```
+///
+/// ## See Also
+///
+/// - ``ImapMailboxAttribute``
+/// - ``ImapFolder``
 public struct ImapMailbox: Sendable, Equatable {
+    /// The kind of list response (LIST or LSUB).
     public let kind: ImapMailboxListKind
+
+    /// The encoded mailbox name as it appears on the server.
+    ///
+    /// This may contain modified UTF-7 encoding for international characters.
     public let name: String
+
+    /// The decoded, human-readable mailbox name.
     public let decodedName: String
+
+    /// The hierarchy delimiter character (e.g., "/" or ".").
+    ///
+    /// This character separates levels in the mailbox hierarchy.
+    /// A `nil` value indicates the mailbox has no hierarchy.
     public let delimiter: String?
+
+    /// The raw attribute strings from the server response.
     public let rawAttributes: [String]
+
+    /// The parsed mailbox attributes.
     public let attributes: [ImapMailboxAttribute]
 
+    /// Creates a new mailbox with the specified properties.
+    ///
+    /// - Parameters:
+    ///   - kind: The type of list response.
+    ///   - name: The encoded mailbox name.
+    ///   - delimiter: The hierarchy delimiter.
+    ///   - attributes: The raw attribute strings.
     public init(kind: ImapMailboxListKind, name: String, delimiter: String?, attributes: [String]) {
         self.kind = kind
         self.name = name
@@ -109,24 +196,36 @@ public struct ImapMailbox: Sendable, Equatable {
         self.attributes = attributes.map { ImapMailboxAttribute(rawValue: $0) }
     }
 
+    /// Checks if the mailbox has a specific attribute.
+    ///
+    /// - Parameter attribute: The attribute to check for.
+    /// - Returns: `true` if the mailbox has the attribute.
     public func hasAttribute(_ attribute: ImapMailboxAttribute) -> Bool {
         attributes.contains(attribute)
     }
 
+    /// The special-use attribute of this mailbox, if any.
+    ///
+    /// Returns the first special-use attribute found (e.g., `.drafts`, `.sent`).
     public var specialUse: ImapMailboxAttribute? {
         attributes.first { $0.isSpecialUse }
     }
 
+    /// Whether the mailbox can be selected (opened).
+    ///
+    /// Returns `false` if the mailbox has the `\Noselect` or `\NonExistent` attribute.
     public var isSelectable: Bool {
         !hasAttribute(.noSelect) && !hasAttribute(.nonExistent)
     }
 
+    /// Whether the mailbox has child mailboxes.
     public var hasChildren: Bool {
         hasAttribute(.hasChildren)
     }
 }
 
 public extension ImapMailboxListResponse {
+    /// Converts this list response to an `ImapMailbox`.
     func toMailbox() -> ImapMailbox {
         ImapMailbox(kind: kind, name: name, delimiter: delimiter, attributes: attributes)
     }

@@ -6,13 +6,62 @@
 
 import Foundation
 
-/// Configuration for a mail server connection.
+// MARK: - Mail Server Configuration
+
+/// Configuration for connecting to a mail server.
+///
+/// `MailServerConfiguration` encapsulates the connection parameters needed
+/// to establish a connection to an IMAP, POP3, or SMTP server.
+///
+/// ## Example Usage
+///
+/// ```swift
+/// // IMAP with implicit TLS (port 993)
+/// let imapConfig = MailServerConfiguration(
+///     host: "imap.example.com",
+///     port: 993,
+///     useTls: true
+/// )
+///
+/// // SMTP with STARTTLS (port 587)
+/// let smtpConfig = MailServerConfiguration(
+///     host: "smtp.example.com",
+///     port: 587,
+///     useTls: false  // Will upgrade via STARTTLS
+/// )
+/// ```
 public struct MailServerConfiguration: Sendable, Equatable {
+    /// The mail server hostname or IP address.
     public let host: String
+
+    /// The port number to connect to.
+    ///
+    /// Common ports:
+    /// - IMAP: 143 (plain), 993 (TLS)
+    /// - POP3: 110 (plain), 995 (TLS)
+    /// - SMTP: 25 (plain), 587 (submission), 465 (TLS)
     public let port: UInt16
+
+    /// Whether to use implicit TLS (connect with TLS from the start).
+    ///
+    /// When `false`, the connection starts unencrypted and may upgrade
+    /// to TLS via STARTTLS. When `true`, TLS is negotiated immediately.
     public let useTls: Bool
+
+    /// Whether to validate the server's TLS certificate.
+    ///
+    /// Set to `false` only for testing with self-signed certificates.
+    ///
+    /// - Warning: Disabling certificate validation is insecure.
     public let validateCertificate: Bool
 
+    /// Creates a mail server configuration.
+    ///
+    /// - Parameters:
+    ///   - host: The server hostname or IP address.
+    ///   - port: The port number.
+    ///   - useTls: Use implicit TLS (default: `false`).
+    ///   - validateCertificate: Validate TLS certificates (default: `true`).
     public init(host: String, port: UInt16, useTls: Bool = false, validateCertificate: Bool = true) {
         self.host = host
         self.port = port
@@ -21,33 +70,113 @@ public struct MailServerConfiguration: Sendable, Equatable {
     }
 }
 
-/// Credentials for authenticating to a mail server.
+// MARK: - Mail Credentials
+
+/// Authentication credentials for a mail server.
+///
+/// `MailCredentials` holds the username and password used to authenticate
+/// with IMAP, POP3, or SMTP servers.
+///
+/// - Note: For OAuth2 authentication, use the appropriate SASL mechanism
+///   directly rather than this credentials type.
 public struct MailCredentials: Sendable {
+    /// The username for authentication.
+    ///
+    /// This is typically the user's email address or a specific username
+    /// configured by the mail provider.
     public let username: String
+
+    /// The password for authentication.
+    ///
+    /// - Warning: Store passwords securely using Keychain or similar.
     public let password: String
 
+    /// Creates mail credentials.
+    ///
+    /// - Parameters:
+    ///   - username: The authentication username.
+    ///   - password: The authentication password.
     public init(username: String, password: String) {
         self.username = username
         self.password = password
     }
 }
 
+// MARK: - Connection Pool Error
+
 /// Errors that can occur during connection pool operations.
+///
+/// These errors indicate problems with acquiring, using, or releasing
+/// pooled connections.
 public enum ConnectionPoolError: Error, Sendable {
+    /// All connections in the pool are in use.
+    ///
+    /// The pool has reached its maximum capacity and no connections
+    /// are available. Either wait for a connection to be released or
+    /// increase the pool's ``ConnectionPool/maxConnections``.
     case poolExhausted
+
+    /// Failed to establish a connection.
+    ///
+    /// - Parameter error: The underlying connection error.
     case connectionFailed(Error)
+
+    /// Authentication failed for the connection.
+    ///
+    /// - Parameter error: The underlying authentication error.
     case authenticationFailed(Error)
+
+    /// The connection is no longer valid.
+    ///
+    /// The connection has been disconnected or is in an invalid state.
     case invalidConnection
+
+    /// The connection pool has been closed.
+    ///
+    /// The pool was closed via ``ConnectionPool/close()`` and can no
+    /// longer provide connections.
     case poolClosed
 }
 
-/// A handle to a pooled connection. When released, the connection returns to the pool.
+// MARK: - Pooled Connection
+
+/// A handle to a connection borrowed from a connection pool.
+///
+/// `PooledConnection` wraps an active mail service connection and ensures
+/// it is returned to the pool when no longer needed. Always call ``release()``
+/// when done using the connection.
+///
+/// ## Usage Pattern
+///
+/// ```swift
+/// let connection = try await pool.acquire()
+/// defer { Task { await connection.release() } }
+///
+/// // Use the connection
+/// let folders = try await connection.service.getFolders(...)
+/// ```
+///
+/// ## Important
+///
+/// Failing to release connections will cause pool exhaustion and prevent
+/// other code from acquiring connections.
+///
+/// - Note: Available on macOS 10.15+ and iOS 13.0+.
 @available(macOS 10.15, iOS 13.0, *)
 public final class PooledConnection<Service: AsyncMailService>: Sendable where Service: Sendable {
+    /// The connection pool this connection belongs to.
     private let pool: ConnectionPool<Service>
+
+    /// The mail service instance for this connection.
+    ///
+    /// Use this service to perform mail operations. The service is
+    /// already connected and authenticated.
     public let service: Service
+
+    /// The action to perform when releasing the connection.
     private let releaseAction: @Sendable () async -> Void
 
+    /// Creates a pooled connection handle.
     init(pool: ConnectionPool<Service>, service: Service, releaseAction: @escaping @Sendable () async -> Void) {
         self.pool = pool
         self.service = service
@@ -55,57 +184,132 @@ public final class PooledConnection<Service: AsyncMailService>: Sendable where S
     }
 
     /// Releases the connection back to the pool.
+    ///
+    /// After calling this method, the ``service`` should not be used
+    /// as it may be given to another caller. Always release connections
+    /// when done to prevent pool exhaustion.
     public func release() async {
         await releaseAction()
     }
 }
 
-/// A pool of connections to a mail server.
+// MARK: - Connection Pool
+
+/// A pool of reusable connections to a mail server.
 ///
-/// Connection pools maintain multiple connections to the same server,
-/// allowing concurrent operations without creating new connections for each request.
+/// `ConnectionPool` maintains a set of authenticated mail service connections,
+/// allowing multiple concurrent operations without the overhead of creating
+/// new connections for each request. This is especially useful for server
+/// applications that handle many mail operations.
 ///
-/// Example usage:
+/// ## Features
+///
+/// - **Connection Reuse**: Connections are returned to the pool after use
+/// - **Automatic Retry**: Failed connections are retried using the configured policy
+/// - **Health Checking**: Stale connections are detected and replaced
+/// - **Backpressure**: Callers wait when the pool is exhausted
+///
+/// ## Basic Usage
+///
 /// ```swift
-/// let factory: () async throws -> AsyncImapMailStore = {
-///     let transport = try AsyncTransportFactory.make(host: "imap.example.com", port: 993, backend: .network)
-///     return AsyncImapMailStore(transport: transport)
-/// }
-/// let pool = ConnectionPool(
+/// // Create a pool for IMAP connections
+/// let pool = ConnectionPool<AsyncImapMailStore>(
 ///     configuration: MailServerConfiguration(host: "imap.example.com", port: 993, useTls: true),
 ///     credentials: MailCredentials(username: "user", password: "pass"),
 ///     maxConnections: 5,
-///     serviceFactory: factory
+///     transportBackend: .network
 /// )
 ///
+/// // Acquire a connection
 /// let connection = try await pool.acquire()
 /// defer { Task { await connection.release() } }
-/// // Use connection.service...
+///
+/// // Use the connection
+/// let folders = try await connection.service.getFolders(reference: "", pattern: "*", subscribedOnly: false)
 /// ```
+///
+/// ## Using withConnection
+///
+/// For simpler usage, use ``withConnection(_:)`` which handles acquire/release:
+///
+/// ```swift
+/// let folders = try await pool.withConnection { service in
+///     try await service.getFolders(reference: "", pattern: "*", subscribedOnly: false)
+/// }
+/// ```
+///
+/// ## Custom Factory
+///
+/// For advanced configuration, provide custom factory and authenticator:
+///
+/// ```swift
+/// let pool = ConnectionPool(
+///     configuration: config,
+///     credentials: credentials,
+///     maxConnections: 10,
+///     serviceFactory: {
+///         let transport = try AsyncTransportFactory.make(host: config.host, port: config.port, backend: .network)
+///         return AsyncImapMailStore(transport: transport)
+///     },
+///     authenticator: { service, creds in
+///         _ = try await service.authenticate(user: creds.username, password: creds.password)
+///     }
+/// )
+/// ```
+///
+/// - Note: Available on macOS 10.15+ and iOS 13.0+.
 @available(macOS 10.15, iOS 13.0, *)
 public actor ConnectionPool<Service: AsyncMailService> where Service: Sendable {
+    /// The server configuration for this pool.
     public let configuration: MailServerConfiguration
+
+    /// The credentials used to authenticate connections.
     public let credentials: MailCredentials
+
+    /// The maximum number of concurrent connections.
+    ///
+    /// The pool will never have more than this many connections active
+    /// at once. When all connections are in use, callers will wait
+    /// for one to become available.
     public let maxConnections: Int
+
+    /// The retry policy for connection attempts.
+    ///
+    /// This policy is used when creating new connections. If a connection
+    /// attempt fails with a transient error, it will be retried according
+    /// to this policy.
     public let retryPolicy: RetryPolicy
 
+    /// Factory function for creating new service instances.
     private let serviceFactory: @Sendable () async throws -> Service
+
+    /// Function to authenticate a newly created service.
     private let authenticator: @Sendable (Service, MailCredentials) async throws -> Void
 
+    /// Services currently available for use.
     private var availableServices: [Service] = []
+
+    /// Number of services currently in use.
     private var inUseCount: Int = 0
+
+    /// Whether the pool has been closed.
     private var isClosed: Bool = false
+
+    /// Continuations waiting for a connection to become available.
     private var waiters: [CheckedContinuation<Service, Error>] = []
 
-    /// Creates a new connection pool.
+    /// Creates a new connection pool with custom factory and authenticator.
+    ///
+    /// This initializer provides full control over how connections are
+    /// created and authenticated.
     ///
     /// - Parameters:
-    ///   - configuration: Server connection configuration
-    ///   - credentials: Authentication credentials
-    ///   - maxConnections: Maximum number of concurrent connections (default: 5)
-    ///   - retryPolicy: Retry policy for connection attempts (default: .default)
-    ///   - serviceFactory: Factory function to create new service instances
-    ///   - authenticator: Function to authenticate a service with credentials
+    ///   - configuration: Server connection configuration.
+    ///   - credentials: Authentication credentials.
+    ///   - maxConnections: Maximum concurrent connections (default: 5).
+    ///   - retryPolicy: Retry policy for connections (default: `.default`).
+    ///   - serviceFactory: Factory function to create new service instances.
+    ///   - authenticator: Function to authenticate a service.
     public init(
         configuration: MailServerConfiguration,
         credentials: MailCredentials,
@@ -326,14 +530,35 @@ public actor ConnectionPool<Service: AsyncMailService> where Service: Sendable {
 
 @available(macOS 10.15, iOS 13.0, *)
 public extension ConnectionPool where Service == AsyncImapMailStore {
-    /// Creates an IMAP connection pool.
+    /// Creates an IMAP connection pool with default factory.
+    ///
+    /// This convenience initializer creates a pool configured for IMAP
+    /// connections using standard authentication.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let pool = ConnectionPool<AsyncImapMailStore>(
+    ///     configuration: MailServerConfiguration(
+    ///         host: "imap.example.com",
+    ///         port: 993,
+    ///         useTls: true
+    ///     ),
+    ///     credentials: MailCredentials(username: "user@example.com", password: "secret"),
+    ///     maxConnections: 5
+    /// )
+    ///
+    /// let folders = try await pool.withConnection { store in
+    ///     try await store.getFolders(reference: "", pattern: "*", subscribedOnly: false)
+    /// }
+    /// ```
     ///
     /// - Parameters:
-    ///   - configuration: Server connection configuration
-    ///   - credentials: Authentication credentials
-    ///   - maxConnections: Maximum number of concurrent connections
-    ///   - retryPolicy: Retry policy for connection attempts (default: .default)
-    ///   - transportBackend: The transport backend to use (default: .network)
+    ///   - configuration: Server connection configuration.
+    ///   - credentials: Authentication credentials.
+    ///   - maxConnections: Maximum concurrent connections (default: 5).
+    ///   - retryPolicy: Retry policy for connections (default: `.default`).
+    ///   - transportBackend: The transport backend (default: `.network`).
     init(
         configuration: MailServerConfiguration,
         credentials: MailCredentials,
@@ -363,15 +588,36 @@ public extension ConnectionPool where Service == AsyncImapMailStore {
 
 @available(macOS 10.15, iOS 13.0, *)
 public extension ConnectionPool where Service == AsyncSmtpTransport {
-    /// Creates an SMTP connection pool.
+    /// Creates an SMTP connection pool with default factory.
+    ///
+    /// This convenience initializer creates a pool configured for SMTP
+    /// connections using PLAIN authentication.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let pool = ConnectionPool<AsyncSmtpTransport>(
+    ///     configuration: MailServerConfiguration(
+    ///         host: "smtp.example.com",
+    ///         port: 587
+    ///     ),
+    ///     credentials: MailCredentials(username: "user@example.com", password: "secret"),
+    ///     maxConnections: 3,
+    ///     localDomain: "client.example.com"
+    /// )
+    ///
+    /// try await pool.withConnection { transport in
+    ///     try await transport.sendMessage(message)
+    /// }
+    /// ```
     ///
     /// - Parameters:
-    ///   - configuration: Server connection configuration
-    ///   - credentials: Authentication credentials
-    ///   - maxConnections: Maximum number of concurrent connections
-    ///   - retryPolicy: Retry policy for connection attempts (default: .default)
-    ///   - transportBackend: The transport backend to use (default: .network)
-    ///   - localDomain: The local domain for EHLO (default: "localhost")
+    ///   - configuration: Server connection configuration.
+    ///   - credentials: Authentication credentials.
+    ///   - maxConnections: Maximum concurrent connections (default: 5).
+    ///   - retryPolicy: Retry policy for connections (default: `.default`).
+    ///   - transportBackend: The transport backend (default: `.network`).
+    ///   - localDomain: The domain for EHLO command (default: "localhost").
     init(
         configuration: MailServerConfiguration,
         credentials: MailCredentials,
@@ -403,14 +649,34 @@ public extension ConnectionPool where Service == AsyncSmtpTransport {
 
 @available(macOS 10.15, iOS 13.0, *)
 public extension ConnectionPool where Service == AsyncPop3MailStore {
-    /// Creates a POP3 connection pool.
+    /// Creates a POP3 connection pool with default factory.
+    ///
+    /// This convenience initializer creates a pool configured for POP3
+    /// connections using USER/PASS authentication.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let pool = ConnectionPool<AsyncPop3MailStore>(
+    ///     configuration: MailServerConfiguration(
+    ///         host: "pop.example.com",
+    ///         port: 995,
+    ///         useTls: true
+    ///     ),
+    ///     credentials: MailCredentials(username: "user@example.com", password: "secret")
+    /// )
+    ///
+    /// let messages = try await pool.withConnection { store in
+    ///     try await store.list()
+    /// }
+    /// ```
     ///
     /// - Parameters:
-    ///   - configuration: Server connection configuration
-    ///   - credentials: Authentication credentials
-    ///   - maxConnections: Maximum number of concurrent connections
-    ///   - retryPolicy: Retry policy for connection attempts (default: .default)
-    ///   - transportBackend: The transport backend to use (default: .network)
+    ///   - configuration: Server connection configuration.
+    ///   - credentials: Authentication credentials.
+    ///   - maxConnections: Maximum concurrent connections (default: 5).
+    ///   - retryPolicy: Retry policy for connections (default: `.default`).
+    ///   - transportBackend: The transport backend (default: `.network`).
     init(
         configuration: MailServerConfiguration,
         credentials: MailCredentials,

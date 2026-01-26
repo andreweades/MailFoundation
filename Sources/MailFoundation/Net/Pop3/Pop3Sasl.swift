@@ -9,11 +9,55 @@ import Foundation
 import CryptoKit
 #endif
 
+/// Represents a SASL authentication mechanism configuration.
+///
+/// This struct encapsulates everything needed to perform SASL authentication
+/// with a POP3 server, including the mechanism name, optional initial response,
+/// and a responder for challenge-response mechanisms.
+///
+/// ## Usage
+///
+/// For simple mechanisms like PLAIN:
+///
+/// ```swift
+/// let auth = Pop3Sasl.plain(username: "user", password: "secret")
+/// // auth.mechanism is "PLAIN"
+/// // auth.initialResponse contains the base64-encoded credentials
+/// ```
+///
+/// For challenge-response mechanisms like CRAM-MD5:
+///
+/// ```swift
+/// let auth = Pop3Sasl.cramMd5(username: "user", password: "secret")!
+/// // auth.responder handles server challenges
+/// ```
+///
+/// ## See Also
+///
+/// - ``Pop3Sasl`` for factory methods
+/// - ``Pop3MailStore/authenticateSasl(user:password:capabilities:mechanisms:)``
 public struct Pop3Authentication: Sendable {
+    /// The SASL mechanism name (e.g., "PLAIN", "LOGIN", "CRAM-MD5", "XOAUTH2").
     public let mechanism: String
+
+    /// The optional initial response for mechanisms that support it.
+    ///
+    /// This is base64-encoded data sent with the AUTH command for mechanisms
+    /// that don't require a server challenge first.
     public let initialResponse: String?
+
+    /// A closure that generates responses to server challenges.
+    ///
+    /// For challenge-response mechanisms, this closure is called with each
+    /// challenge from the server and should return the appropriate response.
     public let responder: (@Sendable (String) throws -> String)?
 
+    /// Initializes a new authentication configuration.
+    ///
+    /// - Parameters:
+    ///   - mechanism: The SASL mechanism name.
+    ///   - initialResponse: Optional base64-encoded initial response.
+    ///   - responder: Optional closure for handling server challenges.
     public init(
         mechanism: String,
         initialResponse: String? = nil,
@@ -25,11 +69,64 @@ public struct Pop3Authentication: Sendable {
     }
 }
 
+/// Factory methods for creating SASL authentication configurations.
+///
+/// `Pop3Sasl` provides static methods for creating ``Pop3Authentication``
+/// configurations for various SASL mechanisms supported by POP3 servers.
+///
+/// ## Supported Mechanisms
+///
+/// - `PLAIN` - Simple username/password in a single base64-encoded string
+/// - `LOGIN` - Challenge-response with separate username and password prompts
+/// - `CRAM-MD5` - Challenge-response using HMAC-MD5 (requires CryptoKit)
+/// - `XOAUTH2` - OAuth 2.0 bearer token authentication
+///
+/// ## Security Considerations
+///
+/// - `PLAIN` sends credentials in base64 (not encrypted) - use only over TLS
+/// - `LOGIN` is similar to PLAIN but uses challenge-response
+/// - `CRAM-MD5` never sends the password but uses weak MD5
+/// - `XOAUTH2` is recommended for services that support OAuth
+///
+/// ## Usage
+///
+/// ```swift
+/// // Automatic mechanism selection
+/// if let auth = Pop3Sasl.chooseAuthentication(
+///     username: "user@example.com",
+///     password: "secret",
+///     mechanisms: capabilities.saslMechanisms()
+/// ) {
+///     // Use auth for authentication
+/// }
+///
+/// // Or choose a specific mechanism
+/// let auth = Pop3Sasl.plain(username: "user", password: "secret")
+/// ```
+///
+/// ## See Also
+///
+/// - ``Pop3Authentication`` for the result type
+/// - ``Pop3Capabilities/saslMechanisms()`` for discovering supported mechanisms
 public enum Pop3Sasl {
+    /// Encodes a string as base64.
+    ///
+    /// - Parameter text: The string to encode.
+    /// - Returns: The base64-encoded string.
     public static func base64(_ text: String) -> String {
         Data(text.utf8).base64EncodedString()
     }
 
+    /// Creates a PLAIN SASL authentication configuration.
+    ///
+    /// PLAIN authentication sends credentials as: `authzid\0username\0password`
+    /// encoded in base64. This should only be used over TLS connections.
+    ///
+    /// - Parameters:
+    ///   - username: The username (authentication identity).
+    ///   - password: The user's password.
+    ///   - authorizationId: Optional authorization identity (usually empty).
+    /// - Returns: A ``Pop3Authentication`` configured for PLAIN.
     public static func plain(
         username: String,
         password: String,
@@ -43,6 +140,16 @@ public enum Pop3Sasl {
         )
     }
 
+    /// Creates a LOGIN SASL authentication configuration.
+    ///
+    /// LOGIN is a legacy mechanism that prompts for username and password
+    /// separately. Like PLAIN, it should only be used over TLS.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - useInitialResponse: Whether to send username as initial response.
+    /// - Returns: A ``Pop3Authentication`` configured for LOGIN.
     public static func login(
         username: String,
         password: String,
@@ -73,6 +180,16 @@ public enum Pop3Sasl {
         )
     }
 
+    /// Creates a CRAM-MD5 SASL authentication configuration.
+    ///
+    /// CRAM-MD5 uses challenge-response authentication where the password
+    /// is never sent over the network. The server sends a challenge, and
+    /// the client responds with `HMAC-MD5(password, challenge)`.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    /// - Returns: A ``Pop3Authentication`` configured for CRAM-MD5, or nil if CryptoKit is unavailable.
     public static func cramMd5(
         username: String,
         password: String
@@ -94,6 +211,26 @@ public enum Pop3Sasl {
         )
     }
 
+    /// Creates an XOAUTH2 SASL authentication configuration.
+    ///
+    /// XOAUTH2 is used for OAuth 2.0 authentication with services like Gmail
+    /// and Outlook.com. You must obtain an access token from the OAuth provider
+    /// before using this method.
+    ///
+    /// - Parameters:
+    ///   - username: The username or email address.
+    ///   - accessToken: The OAuth 2.0 access token.
+    /// - Returns: A ``Pop3Authentication`` configured for XOAUTH2.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // After obtaining an OAuth access token
+    /// let auth = Pop3Sasl.xoauth2(
+    ///     username: "user@gmail.com",
+    ///     accessToken: oauthToken
+    /// )
+    /// ```
     public static func xoauth2(username: String, accessToken: String) -> Pop3Authentication {
         let payload = "user=\(username)\u{01}auth=Bearer \(accessToken)\u{01}\u{01}"
         return Pop3Authentication(
@@ -102,6 +239,32 @@ public enum Pop3Sasl {
         )
     }
 
+    /// Chooses the best available authentication mechanism.
+    ///
+    /// This method selects the most secure mechanism that is both supported
+    /// by the server and available on this platform. The preference order is:
+    /// 1. CRAM-MD5 (if CryptoKit is available)
+    /// 2. PLAIN
+    /// 3. LOGIN
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - mechanisms: The mechanisms supported by the server.
+    /// - Returns: A ``Pop3Authentication`` for the best available mechanism, or nil if none match.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let caps = try session.capa()
+    /// if let auth = Pop3Sasl.chooseAuthentication(
+    ///     username: "user",
+    ///     password: "secret",
+    ///     mechanisms: caps?.saslMechanisms() ?? []
+    /// ) {
+    ///     try session.auth(auth)
+    /// }
+    /// ```
     public static func chooseAuthentication(
         username: String,
         password: String,
@@ -121,7 +284,9 @@ public enum Pop3Sasl {
     }
 }
 
+/// Errors that can occur during SASL authentication.
 public enum Pop3SaslError: Error, Sendable, Equatable {
+    /// The required cryptographic functions are not available on this platform.
     case cryptoUnavailable
 }
 

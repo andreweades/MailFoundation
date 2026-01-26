@@ -6,16 +6,83 @@
 
 import Foundation
 
+/// Contains parsed attributes from an IMAP FETCH response.
+///
+/// `ImapFetchAttributes` provides access to the various data items that can be
+/// requested in a FETCH command, including flags, UID, size, envelope, and
+/// body structure.
+///
+/// ## Overview
+///
+/// When you fetch messages, the server returns various attributes based on
+/// your request. This type parses those attributes into a convenient structure.
+///
+/// ## Usage Example
+///
+/// ```swift
+/// let response = try session.fetch("1:10", items: ["FLAGS", "UID", "ENVELOPE"])
+/// for fetch in response.fetches {
+///     if let attrs = ImapFetchAttributes.parse(fetch) {
+///         print("UID: \(attrs.uid ?? 0)")
+///         print("Flags: \(attrs.flags.joined(separator: ", "))")
+///         if let envelope = attrs.parsedImapEnvelope() {
+///             print("Subject: \(envelope.subject ?? "")")
+///         }
+///     }
+/// }
+/// ```
+///
+/// ## Available Attributes
+///
+/// - `flags` - Message flags (\Seen, \Answered, etc.)
+/// - `uid` - The message's unique identifier
+/// - `size` - The RFC822.SIZE value
+/// - `internalDate` - The server's internal date
+/// - `modSeq` - The modification sequence (CONDSTORE)
+/// - `envelopeRaw` - The raw ENVELOPE data
+/// - `bodyStructure` - The raw BODYSTRUCTURE data
+///
+/// ## See Also
+///
+/// - ``ImapEnvelope``
+/// - ``ImapBodyStructure``
+/// - ``ImapFetchResponse``
 public struct ImapFetchAttributes: Sendable, Equatable {
+    /// The message flags (e.g., "\Seen", "\Answered", "\Flagged").
     public let flags: [String]
+
+    /// The message's unique identifier.
     public let uid: UInt32?
+
+    /// The message size in bytes (RFC822.SIZE).
     public let size: Int?
+
+    /// The server's internal date for the message.
     public let internalDate: String?
+
+    /// The modification sequence number (for CONDSTORE).
     public let modSeq: UInt64?
+
+    /// The raw ENVELOPE data as a string.
     public let envelopeRaw: String?
+
+    /// The raw BODYSTRUCTURE data as a string.
     public let bodyStructure: String?
+
+    /// The raw BODY data as a string (if BODY was fetched).
     public let body: String?
 
+    /// Creates a new fetch attributes instance.
+    ///
+    /// - Parameters:
+    ///   - flags: The message flags.
+    ///   - uid: The message UID.
+    ///   - size: The message size.
+    ///   - internalDate: The internal date.
+    ///   - modSeq: The modification sequence.
+    ///   - envelopeRaw: The raw envelope data.
+    ///   - bodyStructure: The raw body structure data.
+    ///   - body: The raw body data.
     public init(
         flags: [String] = [],
         uid: UInt32? = nil,
@@ -36,10 +103,18 @@ public struct ImapFetchAttributes: Sendable, Equatable {
         self.body = body
     }
 
+    /// Parses attributes from a FETCH response.
+    ///
+    /// - Parameter fetch: The FETCH response to parse.
+    /// - Returns: The parsed attributes, or `nil` if parsing fails.
     public static func parse(_ fetch: ImapFetchResponse) -> ImapFetchAttributes? {
         parsePayload(fetch.payload)
     }
 
+    /// Parses attributes from a FETCH response payload string.
+    ///
+    /// - Parameter payload: The payload string to parse.
+    /// - Returns: The parsed attributes, or `nil` if parsing fails.
     public static func parsePayload(_ payload: String) -> ImapFetchAttributes? {
         let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("("), trimmed.hasSuffix(")") else {
@@ -72,21 +147,56 @@ public struct ImapFetchAttributes: Sendable, Equatable {
         )
     }
 
+    /// Parses the envelope as a MimeFoundation `Envelope`.
+    ///
+    /// - Returns: The parsed envelope, or `nil` if not available or parsing fails.
     public func parsedEnvelope() -> Envelope? {
         guard let envelopeRaw else { return nil }
         return try? Envelope(parsing: envelopeRaw)
     }
 
+    /// Parses the envelope as an `ImapEnvelope`.
+    ///
+    /// - Returns: The parsed IMAP envelope, or `nil` if not available or parsing fails.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// if let envelope = attributes.parsedImapEnvelope() {
+    ///     print("From: \(envelope.from.first?.address ?? "unknown")")
+    ///     print("Subject: \(envelope.subject ?? "")")
+    /// }
+    /// ```
     public func parsedImapEnvelope() -> ImapEnvelope? {
         guard let envelopeRaw else { return nil }
         return ImapEnvelope.parse(envelopeRaw)
     }
 
+    /// Parses the envelope using a cache for performance.
+    ///
+    /// When parsing many envelopes, using a cache can improve performance
+    /// by reusing previously parsed results.
+    ///
+    /// - Parameter cache: The envelope cache to use.
+    /// - Returns: The parsed IMAP envelope, or `nil` if not available or parsing fails.
     public func parsedImapEnvelope(using cache: ImapEnvelopeCache) async -> ImapEnvelope? {
         guard let envelopeRaw else { return nil }
         return await cache.envelope(for: envelopeRaw)
     }
 
+    /// Parses the body structure.
+    ///
+    /// - Returns: The parsed body structure, or `nil` if not available or parsing fails.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// if let structure = attributes.parsedBodyStructure() {
+    ///     for (id, part) in structure.enumerateParts() {
+    ///         print("Part \(id): \(part.type)/\(part.subtype)")
+    ///     }
+    /// }
+    /// ```
     public func parsedBodyStructure() -> ImapBodyStructure? {
         guard let bodyStructure else { return nil }
         return ImapBodyStructure.parse(bodyStructure)

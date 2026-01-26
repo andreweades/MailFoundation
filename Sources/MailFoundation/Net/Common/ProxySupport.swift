@@ -12,24 +12,142 @@ import Darwin
 import Glibc
 #endif
 
+// MARK: - Proxy Type
+
+/// The type of proxy protocol to use for tunneled connections.
+///
+/// Different proxy protocols have different capabilities and authentication
+/// mechanisms. Choose the appropriate type based on your proxy server's
+/// support and your requirements.
+///
+/// - Note: Ported from MailKit's `ProxyClient` implementations.
 public enum ProxyType: Sendable, Equatable {
+    /// HTTP CONNECT proxy (HTTP tunneling).
+    ///
+    /// Uses the HTTP CONNECT method to establish a tunnel through an
+    /// HTTP proxy. This is commonly used for HTTPS proxying and works
+    /// well with mail protocols.
+    ///
+    /// Supports Basic authentication via username/password.
     case httpConnect
+
+    /// SOCKS4 proxy protocol.
+    ///
+    /// An older SOCKS protocol that supports TCP connections but has
+    /// limited authentication (user ID only, no password).
+    ///
+    /// - Note: Use ``useSocks4a`` in ``ProxySettings`` to enable
+    ///   domain name resolution by the proxy server.
     case socks4
+
+    /// SOCKS5 proxy protocol.
+    ///
+    /// A more capable proxy protocol supporting TCP and UDP, as well
+    /// as username/password authentication and IPv6 addresses.
     case socks5
 }
 
+// MARK: - Proxy Settings
+
+/// Configuration settings for connecting through a proxy server.
+///
+/// `ProxySettings` contains all the information needed to establish
+/// a connection through an HTTP CONNECT, SOCKS4, or SOCKS5 proxy.
+///
+/// ## Basic Configuration
+///
+/// ```swift
+/// // HTTP CONNECT proxy without authentication
+/// let proxy = ProxySettings(
+///     host: "proxy.example.com",
+///     port: 8080,
+///     type: .httpConnect
+/// )
+/// ```
+///
+/// ## With Authentication
+///
+/// ```swift
+/// // SOCKS5 proxy with username/password
+/// let proxy = ProxySettings(
+///     host: "socks.example.com",
+///     port: 1080,
+///     type: .socks5,
+///     username: "user",
+///     password: "secret"
+/// )
+/// ```
+///
+/// ## With Custom Headers (HTTP CONNECT)
+///
+/// ```swift
+/// let proxy = ProxySettings(
+///     host: "proxy.example.com",
+///     port: 8080,
+///     type: .httpConnect,
+///     headers: ["X-Custom-Header": "value"]
+/// )
+/// ```
+///
+/// - Note: Ported from MailKit's proxy client configuration.
 public struct ProxySettings: Sendable, Equatable {
+    /// The proxy server hostname or IP address.
     public var host: String
+
+    /// The proxy server port number.
     public var port: Int
+
+    /// The proxy protocol type.
     public var type: ProxyType
+
+    /// Username for proxy authentication (SOCKS5, HTTP CONNECT).
     public var username: String?
+
+    /// Password for proxy authentication (SOCKS5, HTTP CONNECT).
     public var password: String?
+
+    /// User ID for SOCKS4 authentication.
+    ///
+    /// If not specified and ``username`` is set, the username is used.
     public var userId: String?
+
+    /// Whether to use SOCKS4a protocol extensions.
+    ///
+    /// When `true`, domain names are sent to the proxy for resolution
+    /// rather than resolving them locally. This is useful when the
+    /// client cannot resolve the target hostname.
+    ///
+    /// - Note: Only applies to ``ProxyType/socks4``.
     public var useSocks4a: Bool
+
+    /// Maximum number of read attempts during proxy negotiation.
+    ///
+    /// The proxy client will attempt to read responses up to this
+    /// many times before timing out.
     public var maxReads: Int
+
+    /// Timeout for proxy negotiation in milliseconds.
     public var timeoutMilliseconds: Int
+
+    /// Additional HTTP headers to send during CONNECT (HTTP CONNECT only).
+    ///
+    /// These headers are included in the HTTP CONNECT request and can
+    /// be used for custom proxy authentication or identification.
     public var headers: [String: String]
 
+    /// Creates proxy settings with the specified configuration.
+    ///
+    /// - Parameters:
+    ///   - host: The proxy server hostname.
+    ///   - port: The proxy server port.
+    ///   - type: The proxy protocol type.
+    ///   - username: Username for authentication (optional).
+    ///   - password: Password for authentication (optional).
+    ///   - userId: SOCKS4 user ID (optional, defaults to username).
+    ///   - useSocks4a: Use SOCKS4a domain resolution (default: `true`).
+    ///   - maxReads: Maximum read attempts (default: 10).
+    ///   - timeoutMilliseconds: Negotiation timeout (default: 2 minutes).
+    ///   - headers: Additional HTTP headers for CONNECT (default: empty).
     public init(
         host: String,
         port: Int,
@@ -55,17 +173,73 @@ public struct ProxySettings: Sendable, Equatable {
     }
 }
 
+// MARK: - Proxy Error
+
+/// Errors that can occur during proxy connection negotiation.
+///
+/// These errors indicate failures in establishing a tunnel through
+/// the proxy server to the target mail server.
 public enum ProxyError: Error, Sendable, Equatable {
+    /// The proxy negotiation timed out.
+    ///
+    /// The proxy server did not respond within the allowed time.
     case timeout
+
+    /// Failed to write to the transport during proxy negotiation.
     case transportWriteFailed
+
+    /// The proxy server sent an invalid or unexpected response.
     case invalidResponse
+
+    /// Proxy authentication failed.
+    ///
+    /// The provided credentials were rejected by the proxy server.
     case authenticationFailed
+
+    /// The target address type is not supported.
+    ///
+    /// This can occur with SOCKS4 when trying to connect to an IPv6
+    /// address or a domain name without SOCKS4a enabled.
     case unsupportedAddressType
+
+    /// HTTP CONNECT request was rejected.
+    ///
+    /// - Parameters:
+    ///   - statusCode: The HTTP status code (e.g., 403, 407).
+    ///   - statusText: The status reason phrase.
     case httpConnectFailed(statusCode: Int, statusText: String)
+
+    /// SOCKS4 connection was rejected.
+    ///
+    /// - Parameter code: The SOCKS4 reply code (0x5B-0x5D).
     case socks4Rejected(code: UInt8)
+
+    /// SOCKS5 connection was rejected.
+    ///
+    /// - Parameter code: The SOCKS5 reply code indicating the failure reason.
     case socks5Rejected(code: UInt8)
 }
 
+// MARK: - HTTP Proxy Client
+
+/// A synchronous proxy client implementing HTTP CONNECT tunneling.
+///
+/// `HttpProxyClient` establishes a tunnel through an HTTP proxy using the
+/// CONNECT method. This is commonly used for HTTPS proxying and works
+/// well with mail protocols.
+///
+/// ## Protocol Overview
+///
+/// 1. Connect to proxy server
+/// 2. Send HTTP CONNECT request with target host:port
+/// 3. Receive 200 response if successful
+/// 4. Tunnel is established; subsequent data goes to target
+///
+/// ## Authentication
+///
+/// Supports HTTP Basic authentication via `Proxy-Authorization` header.
+///
+/// - Note: Ported from MailKit's `HttpProxyClient`.
 public final class HttpProxyClient: ProxyClient {
     private let transport: Transport
     private let username: String?
@@ -73,6 +247,14 @@ public final class HttpProxyClient: ProxyClient {
     private let maxReads: Int
     private let headers: [String: String]
 
+    /// Creates an HTTP proxy client.
+    ///
+    /// - Parameters:
+    ///   - transport: The transport connected to the proxy server.
+    ///   - username: Username for Basic authentication (optional).
+    ///   - password: Password for Basic authentication (optional).
+    ///   - maxReads: Maximum read attempts for the response.
+    ///   - headers: Additional headers to include in the CONNECT request.
     public init(
         transport: Transport,
         username: String? = nil,
@@ -87,6 +269,14 @@ public final class HttpProxyClient: ProxyClient {
         self.headers = headers
     }
 
+    /// Establishes a tunnel to the target host through the HTTP proxy.
+    ///
+    /// - Parameters:
+    ///   - host: The target hostname to connect to.
+    ///   - port: The target port to connect to.
+    /// - Throws: ``ProxyError/httpConnectFailed(statusCode:statusText:)`` if
+    ///   the proxy rejects the connection, or ``ProxyError/invalidResponse``
+    ///   if the proxy response cannot be parsed.
     public func connect(to host: String, port: Int) throws {
         let authority = "\(host):\(port)"
         var lines: [String] = [
@@ -124,12 +314,35 @@ public final class HttpProxyClient: ProxyClient {
     }
 }
 
+// MARK: - SOCKS4 Proxy Client
+
+/// A synchronous proxy client implementing the SOCKS4/4a protocol.
+///
+/// `Socks4ProxyClient` establishes connections through SOCKS4 proxy servers.
+/// SOCKS4 supports TCP connections with optional user ID authentication.
+///
+/// ## SOCKS4 vs SOCKS4a
+///
+/// - SOCKS4: Client resolves hostnames; only IPv4 addresses supported
+/// - SOCKS4a: Proxy resolves hostnames; domain names can be sent directly
+///
+/// Enable SOCKS4a mode when the client cannot resolve the target hostname
+/// or when you want the proxy to handle DNS resolution.
+///
+/// - Note: Ported from MailKit's `Socks4Client`.
 public final class Socks4ProxyClient: ProxyClient {
     private let transport: Transport
     private let userId: String?
     private let useSocks4a: Bool
     private let maxReads: Int
 
+    /// Creates a SOCKS4 proxy client.
+    ///
+    /// - Parameters:
+    ///   - transport: The transport connected to the proxy server.
+    ///   - userId: User ID for SOCKS4 authentication (optional).
+    ///   - useSocks4a: Enable SOCKS4a domain name resolution (default: `true`).
+    ///   - maxReads: Maximum read attempts for the response.
     public init(
         transport: Transport,
         userId: String? = nil,
@@ -142,6 +355,14 @@ public final class Socks4ProxyClient: ProxyClient {
         self.maxReads = max(1, maxReads)
     }
 
+    /// Establishes a connection to the target host through the SOCKS4 proxy.
+    ///
+    /// - Parameters:
+    ///   - host: The target hostname or IPv4 address.
+    ///   - port: The target port to connect to.
+    /// - Throws: ``ProxyError/socks4Rejected(code:)`` if the proxy rejects
+    ///   the connection, or ``ProxyError/unsupportedAddressType`` if the
+    ///   host is not an IPv4 address and SOCKS4a is disabled.
     public func connect(to host: String, port: Int) throws {
         let portBytes = encodePort(port)
         let ipv4 = parseIPv4(host)
@@ -181,12 +402,40 @@ public final class Socks4ProxyClient: ProxyClient {
     }
 }
 
+// MARK: - SOCKS5 Proxy Client
+
+/// A synchronous proxy client implementing the SOCKS5 protocol.
+///
+/// `Socks5ProxyClient` establishes connections through SOCKS5 proxy servers.
+/// SOCKS5 is the most capable proxy protocol, supporting:
+///
+/// - TCP and UDP connections
+/// - Username/password authentication
+/// - IPv4, IPv6, and domain name addressing
+///
+/// ## Authentication Methods
+///
+/// The client negotiates authentication with the server:
+/// - No authentication (method 0x00)
+/// - Username/password (method 0x02)
+///
+/// If credentials are provided, both methods are offered; otherwise,
+/// only no-authentication is offered.
+///
+/// - Note: Ported from MailKit's `Socks5Client`.
 public final class Socks5ProxyClient: ProxyClient {
     private let transport: Transport
     private let username: String?
     private let password: String?
     private let maxReads: Int
 
+    /// Creates a SOCKS5 proxy client.
+    ///
+    /// - Parameters:
+    ///   - transport: The transport connected to the proxy server.
+    ///   - username: Username for authentication (optional).
+    ///   - password: Password for authentication (optional).
+    ///   - maxReads: Maximum read attempts for responses.
     public init(
         transport: Transport,
         username: String? = nil,
@@ -199,6 +448,19 @@ public final class Socks5ProxyClient: ProxyClient {
         self.maxReads = max(1, maxReads)
     }
 
+    /// Establishes a connection to the target host through the SOCKS5 proxy.
+    ///
+    /// This method performs the SOCKS5 handshake including:
+    /// 1. Method negotiation
+    /// 2. Authentication (if required)
+    /// 3. Connection request
+    ///
+    /// - Parameters:
+    ///   - host: The target hostname, IPv4, or IPv6 address.
+    ///   - port: The target port to connect to.
+    /// - Throws: ``ProxyError/socks5Rejected(code:)`` if the proxy rejects
+    ///   the connection, or ``ProxyError/authenticationFailed`` if
+    ///   authentication fails.
     public func connect(to host: String, port: Int) throws {
         var methods: [UInt8] = [0x00]
         if username != nil {
@@ -427,11 +689,33 @@ private func parseIPv6(_ host: String) -> [UInt8]? {
 
 // MARK: - Async Proxy Clients
 
+/// An asynchronous protocol for proxy client implementations.
+///
+/// Async proxy clients establish tunneled connections through proxy
+/// servers using async/await. They return any bytes received after
+/// the proxy negotiation completes (which should be forwarded to the
+/// protocol layer).
 @available(macOS 10.15, iOS 13.0, *)
 public protocol AsyncProxyClient: AnyObject, Sendable {
+    /// Establishes a connection to the target host through the proxy.
+    ///
+    /// - Parameters:
+    ///   - host: The target hostname to connect to.
+    ///   - port: The target port to connect to.
+    /// - Returns: Any bytes received after proxy negotiation that should
+    ///   be forwarded to the protocol handler.
+    /// - Throws: ``ProxyError`` if the proxy connection fails.
     func connect(to host: String, port: Int) async throws -> [UInt8]
 }
 
+// MARK: - Async HTTP Proxy Client
+
+/// An asynchronous proxy client implementing HTTP CONNECT tunneling.
+///
+/// This is the async version of ``HttpProxyClient``. See that class
+/// for protocol details.
+///
+/// - Note: Available on macOS 10.15+ and iOS 13.0+.
 @available(macOS 10.15, iOS 13.0, *)
 public final class AsyncHttpProxyClient: AsyncProxyClient {
     private let transport: AsyncTransport
@@ -440,6 +724,14 @@ public final class AsyncHttpProxyClient: AsyncProxyClient {
     private let timeoutMilliseconds: Int
     private let headers: [String: String]
 
+    /// Creates an async HTTP proxy client.
+    ///
+    /// - Parameters:
+    ///   - transport: The async transport connected to the proxy server.
+    ///   - username: Username for Basic authentication (optional).
+    ///   - password: Password for Basic authentication (optional).
+    ///   - timeoutMilliseconds: Negotiation timeout in milliseconds.
+    ///   - headers: Additional headers for the CONNECT request.
     public init(
         transport: AsyncTransport,
         username: String? = nil,
@@ -454,6 +746,13 @@ public final class AsyncHttpProxyClient: AsyncProxyClient {
         self.headers = headers
     }
 
+    /// Establishes a tunnel to the target host through the HTTP proxy.
+    ///
+    /// - Parameters:
+    ///   - host: The target hostname.
+    ///   - port: The target port.
+    /// - Returns: Any bytes received after the proxy response.
+    /// - Throws: ``ProxyError`` if the connection fails.
     public func connect(to host: String, port: Int) async throws -> [UInt8] {
         let authority = "\(host):\(port)"
         var lines: [String] = [
@@ -495,6 +794,14 @@ public final class AsyncHttpProxyClient: AsyncProxyClient {
     }
 }
 
+// MARK: - Async SOCKS4 Proxy Client
+
+/// An asynchronous proxy client implementing the SOCKS4/4a protocol.
+///
+/// This is the async version of ``Socks4ProxyClient``. See that class
+/// for protocol details.
+///
+/// - Note: Available on macOS 10.15+ and iOS 13.0+.
 @available(macOS 10.15, iOS 13.0, *)
 public final class AsyncSocks4ProxyClient: AsyncProxyClient {
     private let transport: AsyncTransport
@@ -502,6 +809,13 @@ public final class AsyncSocks4ProxyClient: AsyncProxyClient {
     private let useSocks4a: Bool
     private let timeoutMilliseconds: Int
 
+    /// Creates an async SOCKS4 proxy client.
+    ///
+    /// - Parameters:
+    ///   - transport: The async transport connected to the proxy server.
+    ///   - userId: User ID for SOCKS4 authentication (optional).
+    ///   - useSocks4a: Enable SOCKS4a domain resolution (default: `true`).
+    ///   - timeoutMilliseconds: Negotiation timeout in milliseconds.
     public init(
         transport: AsyncTransport,
         userId: String? = nil,
@@ -514,6 +828,13 @@ public final class AsyncSocks4ProxyClient: AsyncProxyClient {
         self.timeoutMilliseconds = timeoutMilliseconds
     }
 
+    /// Establishes a connection to the target host through the SOCKS4 proxy.
+    ///
+    /// - Parameters:
+    ///   - host: The target hostname or IPv4 address.
+    ///   - port: The target port.
+    /// - Returns: Any bytes received after the proxy response.
+    /// - Throws: ``ProxyError`` if the connection fails.
     public func connect(to host: String, port: Int) async throws -> [UInt8] {
         let portBytes = encodePort(port)
         let ipv4 = parseIPv4(host)
@@ -557,6 +878,14 @@ public final class AsyncSocks4ProxyClient: AsyncProxyClient {
     }
 }
 
+// MARK: - Async SOCKS5 Proxy Client
+
+/// An asynchronous proxy client implementing the SOCKS5 protocol.
+///
+/// This is the async version of ``Socks5ProxyClient``. See that class
+/// for protocol details.
+///
+/// - Note: Available on macOS 10.15+ and iOS 13.0+.
 @available(macOS 10.15, iOS 13.0, *)
 public final class AsyncSocks5ProxyClient: AsyncProxyClient {
     private let transport: AsyncTransport
@@ -564,6 +893,13 @@ public final class AsyncSocks5ProxyClient: AsyncProxyClient {
     private let password: String?
     private let timeoutMilliseconds: Int
 
+    /// Creates an async SOCKS5 proxy client.
+    ///
+    /// - Parameters:
+    ///   - transport: The async transport connected to the proxy server.
+    ///   - username: Username for authentication (optional).
+    ///   - password: Password for authentication (optional).
+    ///   - timeoutMilliseconds: Negotiation timeout in milliseconds.
     public init(
         transport: AsyncTransport,
         username: String? = nil,
@@ -576,6 +912,13 @@ public final class AsyncSocks5ProxyClient: AsyncProxyClient {
         self.timeoutMilliseconds = timeoutMilliseconds
     }
 
+    /// Establishes a connection to the target host through the SOCKS5 proxy.
+    ///
+    /// - Parameters:
+    ///   - host: The target hostname, IPv4, or IPv6 address.
+    ///   - port: The target port.
+    /// - Returns: Any bytes received after the proxy response.
+    /// - Throws: ``ProxyError`` if the connection fails.
     public func connect(to host: String, port: Int) async throws -> [UInt8] {
         var methods: [UInt8] = [0x00]
         if username != nil {

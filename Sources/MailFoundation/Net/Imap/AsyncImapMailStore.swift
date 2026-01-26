@@ -4,8 +4,50 @@
 // Async IMAP mail store and folder wrappers.
 //
 
+/// An async/await IMAP mail store that provides access to mailboxes on an IMAP server.
+///
+/// The `AsyncImapMailStore` class is the async counterpart to `ImapMailStore`, providing
+/// the same functionality using Swift's async/await concurrency model. It is implemented
+/// as an actor for thread-safe access.
+///
+/// ## Overview
+///
+/// Before you can retrieve messages with the `AsyncImapMailStore`, you must first
+/// call `connect()` and then authenticate with `authenticate(user:password:)`.
+///
+/// ## Usage Example
+///
+/// ```swift
+/// // Create and connect to an IMAP server
+/// let store = try AsyncImapMailStore.make(host: "imap.example.com", port: 993, backend: .tls)
+/// try await store.connect()
+///
+/// // Authenticate
+/// try await store.authenticate(user: "user@example.com", password: "secret")
+///
+/// // Open the inbox
+/// let inbox = try await store.openInbox(access: .readOnly)
+///
+/// // Search for messages
+/// let results = try await store.search(.all)
+///
+/// // Disconnect when done
+/// await store.disconnect()
+/// ```
+///
+/// ## Thread Safety
+///
+/// `AsyncImapMailStore` is an actor, providing automatic thread-safe access to its state.
+/// All methods are async and can be called from any context.
+///
+/// ## See Also
+///
+/// - ``AsyncImapFolder``
+/// - ``ImapMailStore``
+/// - ``AsyncImapSession``
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncImapMailStore: AsyncMailStore {
+    /// The type of folder used by this mail store.
     public typealias FolderType = AsyncImapFolder
 
     private let session: AsyncImapSession
@@ -27,6 +69,17 @@ public actor AsyncImapMailStore: AsyncMailStore {
         await session.setTimeoutMilliseconds(milliseconds)
     }
 
+    /// Creates a new async IMAP mail store connected to the specified host.
+    ///
+    /// This factory method creates the underlying transport and initializes the mail store.
+    ///
+    /// - Parameters:
+    ///   - host: The hostname or IP address of the IMAP server.
+    ///   - port: The port number (typically 143 for IMAP or 993 for IMAPS).
+    ///   - backend: The transport backend to use.
+    ///   - timeoutMilliseconds: The timeout for network operations (default: 120000).
+    /// - Returns: A configured `AsyncImapMailStore` instance.
+    /// - Throws: An error if the transport cannot be created.
     public static func make(
         host: String,
         port: UInt16,
@@ -37,6 +90,16 @@ public actor AsyncImapMailStore: AsyncMailStore {
         return AsyncImapMailStore(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
+    /// Creates a new async IMAP mail store with proxy support.
+    ///
+    /// - Parameters:
+    ///   - host: The hostname or IP address of the IMAP server.
+    ///   - port: The port number.
+    ///   - backend: The transport backend to use.
+    ///   - proxy: The proxy settings for tunneling the connection.
+    ///   - timeoutMilliseconds: The timeout for network operations.
+    /// - Returns: A configured `AsyncImapMailStore` instance.
+    /// - Throws: An error if the transport cannot be created.
     public static func make(
         host: String,
         port: UInt16,
@@ -48,6 +111,11 @@ public actor AsyncImapMailStore: AsyncMailStore {
         return AsyncImapMailStore(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
+    /// Initializes a new async IMAP mail store with the given transport.
+    ///
+    /// - Parameters:
+    ///   - transport: The async transport to use for communication.
+    ///   - timeoutMilliseconds: The timeout for network operations.
     public init(
         transport: AsyncTransport,
         timeoutMilliseconds: Int = defaultImapTimeoutMs
@@ -55,56 +123,86 @@ public actor AsyncImapMailStore: AsyncMailStore {
         self.session = AsyncImapSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
+    /// Connects to the IMAP server and retrieves the server greeting.
+    ///
+    /// - Returns: The server's greeting response, or `nil` if none.
+    /// - Throws: An error if the connection fails.
     @discardableResult
     public func connect() async throws -> ImapResponse? {
         try await session.connect()
     }
 
+    /// Disconnects from the IMAP server.
+    ///
+    /// This method closes the connection and resets the selected folder state.
     public func disconnect() async {
         await session.disconnect()
         selectedFolderStorage = nil
         selectedAccessStorage = nil
     }
 
+    /// Authenticates with the IMAP server using the LOGIN command.
+    ///
+    /// - Parameters:
+    ///   - user: The username or email address.
+    ///   - password: The password or app-specific password.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails.
     public func authenticate(user: String, password: String) async throws -> ImapResponse? {
         try await session.login(user: user, password: password)
     }
 
+    /// The current state of the mail service.
     public var state: MailServiceState {
         get async {
             await session.state
         }
     }
 
+    /// Whether the client is currently connected.
     public var isConnected: Bool {
         get async {
             await session.isConnected
         }
     }
 
+    /// Whether the client is authenticated.
     public var isAuthenticated: Bool {
         get async {
             await session.isAuthenticated
         }
     }
 
+    /// The currently selected folder, if any.
     public var selectedFolder: AsyncImapFolder? {
         get async {
             selectedFolderStorage
         }
     }
 
+    /// The access mode of the currently selected folder.
     public var selectedAccess: FolderAccess? {
         get async {
             selectedAccessStorage
         }
     }
 
+    /// Gets a folder reference by path without opening it.
+    ///
+    /// - Parameter path: The full path to the folder.
+    /// - Returns: An `AsyncImapFolder` reference.
     public func getFolder(_ path: String) async throws -> AsyncImapFolder {
         let mailbox = ImapMailbox(kind: .list, name: path, delimiter: nil, attributes: [])
         return AsyncImapFolder(session: session, mailbox: mailbox, store: self)
     }
 
+    /// Lists folders matching the specified pattern.
+    ///
+    /// - Parameters:
+    ///   - reference: The reference name (typically empty string).
+    ///   - pattern: The pattern to match.
+    ///   - subscribedOnly: If `true`, only returns subscribed folders.
+    /// - Returns: An array of `AsyncImapFolder` objects.
     public func getFolders(reference: String, pattern: String, subscribedOnly: Bool = false) async throws -> [AsyncImapFolder] {
         let mailboxes = subscribedOnly
             ? try await session.lsub(reference: reference, mailbox: pattern)
@@ -112,20 +210,36 @@ public actor AsyncImapMailStore: AsyncMailStore {
         return mailboxes.map { AsyncImapFolder(session: session, mailbox: $0, store: self) }
     }
 
+    /// Opens a folder with the specified access mode.
+    ///
+    /// - Parameters:
+    ///   - path: The full path to the folder.
+    ///   - access: The desired access mode.
+    /// - Returns: The opened `AsyncImapFolder`.
     public func openFolder(_ path: String, access: FolderAccess) async throws -> AsyncImapFolder {
         let folder = try await getFolder(path)
         _ = try await folder.open(access)
         return folder
     }
 
+    /// Opens the INBOX folder with the specified access mode.
+    ///
+    /// - Parameter access: The desired access mode.
+    /// - Returns: The opened INBOX folder.
     public func openInbox(access: FolderAccess) async throws -> AsyncImapFolder {
         try await openFolder("INBOX", access: access)
     }
 
+    /// Opens the specified folder with the given access mode.
+    ///
+    /// - Parameters:
+    ///   - folder: The folder to open.
+    ///   - access: The desired access mode.
     public func openFolder(_ folder: AsyncImapFolder, access: FolderAccess) async throws {
         _ = try await folder.open(access)
     }
 
+    /// Closes the currently selected folder.
     public func closeFolder() async throws {
         guard let folder = selectedFolderStorage else { return }
         _ = try await folder.close()
@@ -138,17 +252,35 @@ public actor AsyncImapMailStore: AsyncMailStore {
         return folder
     }
 
+    /// Creates a new folder with the specified path.
+    ///
+    /// - Parameters:
+    ///   - path: The full path for the new folder.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The created `AsyncImapFolder`.
     public func createFolder(_ path: String, maxEmptyReads: Int = 10) async throws -> AsyncImapFolder {
         let folder = try await getFolder(path)
         _ = try await folder.create(maxEmptyReads: maxEmptyReads)
         return folder
     }
 
+    /// Creates the specified folder on the server.
+    ///
+    /// - Parameters:
+    ///   - folder: The folder to create.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The created `AsyncImapFolder`.
     public func createFolder(_ folder: AsyncImapFolder, maxEmptyReads: Int = 10) async throws -> AsyncImapFolder {
         _ = try await folder.create(maxEmptyReads: maxEmptyReads)
         return folder
     }
 
+    /// Deletes a folder by path.
+    ///
+    /// - Parameters:
+    ///   - path: The full path of the folder to delete.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The server's response.
     public func deleteFolder(_ path: String, maxEmptyReads: Int = 10) async throws -> ImapResponse {
         if let selectedFolderStorage, selectedFolderStorage.mailbox.name == path {
             return try await selectedFolderStorage.delete(maxEmptyReads: maxEmptyReads)
@@ -157,10 +289,23 @@ public actor AsyncImapMailStore: AsyncMailStore {
         return try await folder.delete(maxEmptyReads: maxEmptyReads)
     }
 
+    /// Deletes the specified folder.
+    ///
+    /// - Parameters:
+    ///   - folder: The folder to delete.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The server's response.
     public func deleteFolder(_ folder: AsyncImapFolder, maxEmptyReads: Int = 10) async throws -> ImapResponse {
         try await folder.delete(maxEmptyReads: maxEmptyReads)
     }
 
+    /// Renames a folder.
+    ///
+    /// - Parameters:
+    ///   - path: The current path of the folder.
+    ///   - newName: The new name for the folder.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The renamed `AsyncImapFolder`.
     public func renameFolder(_ path: String, to newName: String, maxEmptyReads: Int = 10) async throws -> AsyncImapFolder {
         if let selectedFolderStorage, selectedFolderStorage.mailbox.name == path {
             return try await selectedFolderStorage.rename(to: newName, maxEmptyReads: maxEmptyReads)
@@ -169,24 +314,55 @@ public actor AsyncImapMailStore: AsyncMailStore {
         return try await folder.rename(to: newName, maxEmptyReads: maxEmptyReads)
     }
 
+    /// Renames the specified folder.
+    ///
+    /// - Parameters:
+    ///   - folder: The folder to rename.
+    ///   - newName: The new name for the folder.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The renamed `AsyncImapFolder`.
     public func renameFolder(_ folder: AsyncImapFolder, to newName: String, maxEmptyReads: Int = 10) async throws -> AsyncImapFolder {
         try await folder.rename(to: newName, maxEmptyReads: maxEmptyReads)
     }
 
+    /// Subscribes to a folder.
+    ///
+    /// - Parameters:
+    ///   - path: The full path of the folder to subscribe to.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The server's response.
     public func subscribeFolder(_ path: String, maxEmptyReads: Int = 10) async throws -> ImapResponse {
         let folder = try await getFolder(path)
         return try await folder.subscribe(maxEmptyReads: maxEmptyReads)
     }
 
+    /// Subscribes to the specified folder.
+    ///
+    /// - Parameters:
+    ///   - folder: The folder to subscribe to.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The server's response.
     public func subscribeFolder(_ folder: AsyncImapFolder, maxEmptyReads: Int = 10) async throws -> ImapResponse {
         try await folder.subscribe(maxEmptyReads: maxEmptyReads)
     }
 
+    /// Unsubscribes from a folder.
+    ///
+    /// - Parameters:
+    ///   - path: The full path of the folder to unsubscribe from.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The server's response.
     public func unsubscribeFolder(_ path: String, maxEmptyReads: Int = 10) async throws -> ImapResponse {
         let folder = try await getFolder(path)
         return try await folder.unsubscribe(maxEmptyReads: maxEmptyReads)
     }
 
+    /// Unsubscribes from the specified folder.
+    ///
+    /// - Parameters:
+    ///   - folder: The folder to unsubscribe from.
+    ///   - maxEmptyReads: Maximum read attempts for the response.
+    /// - Returns: The server's response.
     public func unsubscribeFolder(_ folder: AsyncImapFolder, maxEmptyReads: Int = 10) async throws -> ImapResponse {
         try await folder.unsubscribe(maxEmptyReads: maxEmptyReads)
     }
@@ -498,16 +674,62 @@ public actor AsyncImapMailStore: AsyncMailStore {
     }
 }
 
+/// Represents an async IMAP folder (mailbox) on the server.
+///
+/// `AsyncImapFolder` is the async counterpart to `ImapFolder`, providing the same
+/// folder operations using Swift's async/await concurrency model. It is implemented
+/// as an actor for thread-safe access.
+///
+/// ## Overview
+///
+/// IMAP folders correspond to mailboxes on the server. Each folder has a name,
+/// attributes, and may contain messages. The folder must be opened before you can
+/// search, fetch, or modify messages.
+///
+/// ## Usage Example
+///
+/// ```swift
+/// // Get and open a folder
+/// let folder = try await store.getFolder("Archive/2024")
+/// try await folder.open(.readOnly)
+///
+/// // Search for messages
+/// let results = try await folder.search(.unseen)
+///
+/// // Close the folder
+/// try await folder.close()
+/// ```
+///
+/// ## Thread Safety
+///
+/// `AsyncImapFolder` is an actor, providing automatic thread-safe access to its state.
+///
+/// ## See Also
+///
+/// - ``AsyncImapMailStore``
+/// - ``ImapMailbox``
+/// - ``ImapFolder``
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncImapFolder: AsyncMailFolder {
+    /// The underlying mailbox information including name and attributes.
     public nonisolated let mailbox: ImapMailbox
+
+    /// The decoded full name of the folder.
     public nonisolated let fullName: String
+
+    /// The short name of the folder (last component of the path).
     public nonisolated let name: String
 
     private let session: AsyncImapSession
     private weak var store: AsyncImapMailStore?
     private var access: FolderAccess?
 
+    /// Initializes a new async IMAP folder.
+    ///
+    /// - Parameters:
+    ///   - session: The async IMAP session to use for commands.
+    ///   - mailbox: The mailbox information.
+    ///   - store: The parent mail store (held weakly).
     public init(session: AsyncImapSession, mailbox: ImapMailbox, store: AsyncImapMailStore?) {
         self.session = session
         self.mailbox = mailbox
@@ -516,10 +738,15 @@ public actor AsyncImapFolder: AsyncMailFolder {
         self.name = MailFolderBase.computeName(mailbox.decodedName, delimiter: mailbox.delimiter)
     }
 
+    /// Whether the folder is currently open.
     public var isOpen: Bool {
         access != nil
     }
 
+    /// Opens the folder with the specified access mode.
+    ///
+    /// - Parameter access: The desired access mode.
+    /// - Returns: The server's response.
     public func open(_ access: FolderAccess) async throws -> ImapResponse? {
         let response: ImapResponse?
         switch access {

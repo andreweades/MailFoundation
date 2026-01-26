@@ -7,38 +7,214 @@
 import Foundation
 import MimeFoundation
 
+/// An error that occurs during envelope parsing.
+///
+/// This error is thrown when attempting to parse an envelope from a string
+/// representation that does not conform to the expected format.
 public enum EnvelopeParseError: Error, Sendable {
+    /// The envelope text contains an invalid or unexpected token.
     case invalidToken
 }
 
+/// A message envelope containing a brief summary of the message.
+///
+/// The envelope of a message contains information such as the date the message was sent,
+/// the subject of the message, the sender of the message, who the message was sent to,
+/// which message(s) the message may be in reply to, and the message id.
+///
+/// This class also provides extended header information commonly used for email authentication
+/// and mailing list management, including DKIM signatures, SPF results, and List-* headers.
+///
+/// ## Topics
+///
+/// ### Core Addressing
+/// - ``from``
+/// - ``sender``
+/// - ``replyTo``
+/// - ``to``
+/// - ``cc``
+/// - ``bcc``
+///
+/// ### Message Identification
+/// - ``messageId``
+/// - ``inReplyTo``
+/// - ``date``
+/// - ``subject``
+///
+/// ### Mailing List Headers
+/// - ``listId``
+/// - ``listArchive``
+/// - ``listHelp``
+/// - ``listOwner``
+/// - ``listPost``
+/// - ``listSubscribe``
+/// - ``listUnsubscribe``
+/// - ``listUnsubscribePost``
+///
+/// ### Email Authentication
+/// - ``dkimSignatures``
+/// - ``domainKeySignatures``
+/// - ``authenticationResults``
+/// - ``arcAuthenticationResults``
+/// - ``receivedSpf``
+/// - ``arcSeals``
+/// - ``arcMessageSignatures``
+///
+/// ## Example
+///
+/// ```swift
+/// let envelope = Envelope()
+/// envelope.from.add(MailboxAddress(name: "John Doe", address: "john@example.com"))
+/// envelope.to.add(MailboxAddress(name: "Jane Doe", address: "jane@example.com"))
+/// envelope.subject = "Hello, World!"
+/// envelope.date = Date()
+/// ```
 public final class Envelope {
+    /// The address(es) that the message is from.
+    ///
+    /// Gets the list of addresses in the `From` header field.
+    /// This typically contains the author(s) of the message.
     public let from: InternetAddressList
+
+    /// The actual sender(s) of the message.
+    ///
+    /// The sender may differ from the addresses in ``from`` if the message was sent
+    /// by someone on behalf of someone else. This corresponds to the `Sender` header field.
     public let sender: InternetAddressList
+
+    /// The address(es) that replies should be sent to.
+    ///
+    /// The senders of the message may prefer that replies are sent somewhere other
+    /// than the address they used to send the message. This corresponds to the
+    /// `Reply-To` header field.
     public let replyTo: InternetAddressList
+
+    /// The list of addresses that the message was sent to.
+    ///
+    /// Gets the addresses in the `To` header field representing the primary recipients.
     public let to: InternetAddressList
+
+    /// The list of addresses that the message was carbon-copied to.
+    ///
+    /// Gets the addresses in the `Cc` header field representing secondary recipients
+    /// who receive a copy of the message.
     public let cc: InternetAddressList
+
+    /// The list of addresses that the message was blind-carbon-copied to.
+    ///
+    /// Gets the addresses in the `Bcc` header field. These recipients are hidden
+    /// from other recipients of the message.
     public let bcc: InternetAddressList
 
+    /// The Message-Id that the message is replying to.
+    ///
+    /// This corresponds to the `In-Reply-To` header field and contains the message
+    /// identifier of the message being replied to.
     public var inReplyTo: String?
+
+    /// The date that the message was sent, if available.
+    ///
+    /// This corresponds to the `Date` header field and represents when the message
+    /// was composed by the sender.
     public var date: Date?
+
+    /// The unique identifier of the message, if available.
+    ///
+    /// This corresponds to the `Message-Id` header field, which provides a globally
+    /// unique identifier for the message, typically in the format `<unique-id@domain>`.
     public var messageId: String?
+
+    /// The subject of the message.
+    ///
+    /// This corresponds to the `Subject` header field.
     public var subject: String?
+
+    /// The identifier of the mailing list, if applicable.
+    ///
+    /// This corresponds to the `List-Id` header field defined in RFC 2919.
     public var listId: String?
+
+    /// The URL of the mailing list archive, if applicable.
+    ///
+    /// This corresponds to the `List-Archive` header field defined in RFC 2369.
     public var listArchive: String?
+
+    /// The URL or address for getting help with the mailing list, if applicable.
+    ///
+    /// This corresponds to the `List-Help` header field defined in RFC 2369.
     public var listHelp: String?
+
+    /// The address of the mailing list owner, if applicable.
+    ///
+    /// This corresponds to the `List-Owner` header field defined in RFC 2369.
     public var listOwner: String?
+
+    /// The URL or address for posting to the mailing list, if applicable.
+    ///
+    /// This corresponds to the `List-Post` header field defined in RFC 2369.
     public var listPost: String?
+
+    /// The URL or address for subscribing to the mailing list, if applicable.
+    ///
+    /// This corresponds to the `List-Subscribe` header field defined in RFC 2369.
     public var listSubscribe: String?
+
+    /// The URL or address for unsubscribing from the mailing list, if applicable.
+    ///
+    /// This corresponds to the `List-Unsubscribe` header field defined in RFC 2369.
     public var listUnsubscribe: String?
+
+    /// The HTTP POST body for one-click unsubscribe, if applicable.
+    ///
+    /// This corresponds to the `List-Unsubscribe-Post` header field defined in RFC 8058,
+    /// which enables one-click unsubscribe functionality.
     public var listUnsubscribePost: String?
+
+    /// The DKIM-Signature header values.
+    ///
+    /// Contains the raw values of all `DKIM-Signature` headers present in the message,
+    /// used for DomainKeys Identified Mail authentication as defined in RFC 6376.
     public var dkimSignatures: [String]
+
+    /// The DomainKey-Signature header values.
+    ///
+    /// Contains the raw values of all `DomainKey-Signature` headers present in the message,
+    /// used for the older DomainKeys authentication standard.
     public var domainKeySignatures: [String]
+
+    /// The Authentication-Results header values.
+    ///
+    /// Contains the raw values of all `Authentication-Results` headers present in the message,
+    /// which report the results of email authentication checks as defined in RFC 8601.
     public var authenticationResults: [String]
+
+    /// The ARC-Authentication-Results header values.
+    ///
+    /// Contains the raw values of all `ARC-Authentication-Results` headers present in the message,
+    /// part of the Authenticated Received Chain defined in RFC 8617.
     public var arcAuthenticationResults: [String]
+
+    /// The Received-SPF header values.
+    ///
+    /// Contains the raw values of all `Received-SPF` headers present in the message,
+    /// which report the results of SPF (Sender Policy Framework) checks as defined in RFC 7208.
     public var receivedSpf: [String]
+
+    /// The ARC-Seal header values.
+    ///
+    /// Contains the raw values of all `ARC-Seal` headers present in the message,
+    /// part of the Authenticated Received Chain defined in RFC 8617.
     public var arcSeals: [String]
+
+    /// The ARC-Message-Signature header values.
+    ///
+    /// Contains the raw values of all `ARC-Message-Signature` headers present in the message,
+    /// part of the Authenticated Received Chain defined in RFC 8617.
     public var arcMessageSignatures: [String]
 
+    /// Creates a new empty envelope.
+    ///
+    /// Initializes all address lists to empty lists and all array properties to empty arrays.
     public init() {
         self.from = InternetAddressList()
         self.sender = InternetAddressList()
@@ -200,6 +376,15 @@ public final class Envelope {
         builder.append(")")
     }
 
+    /// Returns a string representation of the envelope.
+    ///
+    /// The returned string is in a format similar to IMAP's ENVELOPE syntax and can be
+    /// parsed by ``init(parsing:)``.
+    ///
+    /// - Note: The syntax of the string returned, while similar to IMAP's ENVELOPE syntax,
+    ///   is not completely compatible with the IMAP protocol.
+    ///
+    /// - Returns: A string representation of the envelope.
     public func toString() -> String {
         var builder = ""
         encode(&builder)
@@ -493,6 +678,20 @@ public final class Envelope {
         return (true, envelope)
     }
 
+    /// Parses the given text into a new envelope instance.
+    ///
+    /// Parses an envelope value from the specified text. The text format is similar to
+    /// IMAP's ENVELOPE syntax but is not completely compatible.
+    ///
+    /// - Parameter text: The text to parse.
+    /// - Throws: ``EnvelopeParseError/invalidToken`` if the text cannot be parsed.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let text = "(\"Mon, 20 Jan 2025 10:30:00 -0500\" \"Test Subject\" ((\"John\" NIL \"john\" \"example.com\")) NIL NIL ((\"Jane\" NIL \"jane\" \"example.com\")) NIL NIL NIL \"<abc123@example.com>\")"
+    /// let envelope = try Envelope(parsing: text)
+    /// ```
     public convenience init(parsing text: String) throws {
         var index = 0
         let bytes = Array(text.utf8)
@@ -531,6 +730,9 @@ public final class Envelope {
 }
 
 extension Envelope: CustomStringConvertible {
+    /// A textual representation of the envelope.
+    ///
+    /// Returns the same value as ``toString()``.
     public var description: String {
         toString()
     }
