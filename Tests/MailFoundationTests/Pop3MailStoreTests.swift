@@ -175,6 +175,34 @@ func pop3StoreCommandErrorResponse() throws {
     }
 }
 
+@Test("POP3 store SASL XOAUTH2 unsupported via CAPA")
+func pop3StoreSaslXoauth2Unsupported() throws {
+    let transport = TestTransport(incoming: [
+        Array("+OK Ready\r\n".utf8),
+        Array("+OK Capability list follows\r\nSASL PLAIN\r\n.\r\n".utf8)
+    ])
+    let store = Pop3MailStore(transport: transport)
+    _ = try store.connect()
+
+    #expect(throws: SessionError.pop3Error(message: "XOAUTH2 is not supported.")) {
+        _ = try store.authenticateSasl(user: "user@example.com", accessToken: "token")
+    }
+}
+
+@Test("POP3 store SASL CRAM-MD5 unsupported via CAPA")
+func pop3StoreSaslCramMd5Unsupported() throws {
+    let transport = TestTransport(incoming: [
+        Array("+OK Ready\r\n".utf8),
+        Array("+OK Capability list follows\r\nSASL XOAUTH2\r\n.\r\n".utf8)
+    ])
+    let store = Pop3MailStore(transport: transport)
+    _ = try store.connect()
+
+    #expect(throws: SessionError.pop3Error(message: "No supported SASL mechanisms.")) {
+        _ = try store.authenticateSasl(user: "user", password: "pass")
+    }
+}
+
 @available(macOS 10.15, iOS 13.0, *)
 @Test("Async POP3 folder message data")
 func asyncPop3FolderMessageData() async throws {
@@ -357,5 +385,41 @@ func asyncPop3StoreCommandErrorResponse() async throws {
         } else {
             #expect(Bool(false))
         }
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async POP3 store SASL XOAUTH2 unsupported via CAPA")
+func asyncPop3StoreSaslXoauth2Unsupported() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncPop3MailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("+OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    await #expect(throws: SessionError.pop3Error(message: "XOAUTH2 is not supported.")) {
+        let authTask = Task {
+            try await store.authenticateSasl(user: "user@example.com", accessToken: "token")
+        }
+        await transport.yieldIncoming(Array("+OK Capability list follows\r\nSASL PLAIN\r\n.\r\n".utf8))
+        _ = try await authTask.value
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+@Test("Async POP3 store SASL CRAM-MD5 unsupported via CAPA")
+func asyncPop3StoreSaslCramMd5Unsupported() async throws {
+    let transport = AsyncStreamTransport()
+    let store = AsyncPop3MailStore(transport: transport)
+
+    let connectTask = Task { try await store.connect() }
+    await transport.yieldIncoming(Array("+OK Ready\r\n".utf8))
+    _ = try await connectTask.value
+
+    await #expect(throws: SessionError.pop3Error(message: "No supported SASL mechanisms.")) {
+        let authTask = Task { try await store.authenticateSasl(user: "user", password: "pass") }
+        await transport.yieldIncoming(Array("+OK Capability list follows\r\nSASL XOAUTH2\r\n.\r\n".utf8))
+        _ = try await authTask.value
     }
 }
