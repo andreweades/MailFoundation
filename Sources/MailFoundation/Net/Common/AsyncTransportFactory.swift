@@ -41,4 +41,32 @@ public enum AsyncTransportFactory {
             #endif
         }
     }
+
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend,
+        proxy: ProxySettings?
+    ) async throws -> AsyncTransport {
+        guard let proxy else {
+            return try make(host: host, port: port, backend: backend)
+        }
+
+        let transport = try make(host: proxy.host, port: UInt16(proxy.port), backend: backend)
+        do {
+            try await transport.start()
+            let client = AsyncProxyClientFactory.make(transport: transport, settings: proxy)
+            let leftover = try await client.connect(to: host, port: Int(port))
+            if !leftover.isEmpty {
+                if let tlsTransport = transport as? AsyncStartTlsTransport {
+                    return BufferedAsyncStartTlsTransport(transport: tlsTransport, prebuffer: leftover)
+                }
+                return BufferedAsyncTransport(transport: transport, prebuffer: leftover)
+            }
+            return transport
+        } catch {
+            await transport.stop()
+            throw error
+        }
+    }
 }

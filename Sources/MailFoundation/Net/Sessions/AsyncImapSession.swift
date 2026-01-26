@@ -43,6 +43,17 @@ public actor AsyncImapSession {
         return AsyncImapSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        proxy: ProxySettings,
+        timeoutMilliseconds: Int = defaultImapTimeoutMs
+    ) async throws -> AsyncImapSession {
+        let transport = try await AsyncTransportFactory.make(host: host, port: port, backend: backend, proxy: proxy)
+        return AsyncImapSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
+    }
+
     @discardableResult
     public func connect() async throws -> ImapResponse? {
         try await client.start()

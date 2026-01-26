@@ -42,6 +42,17 @@ public actor AsyncPop3Session {
         return AsyncPop3Session(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        proxy: ProxySettings,
+        timeoutMilliseconds: Int = defaultPop3TimeoutMs
+    ) async throws -> AsyncPop3Session {
+        let transport = try await AsyncTransportFactory.make(host: host, port: port, backend: backend, proxy: proxy)
+        return AsyncPop3Session(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
+    }
+
     @discardableResult
     public func connect() async throws -> Pop3Response? {
         try await client.start()

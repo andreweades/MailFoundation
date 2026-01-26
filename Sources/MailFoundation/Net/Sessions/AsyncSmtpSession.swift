@@ -41,6 +41,17 @@ public actor AsyncSmtpSession {
         return AsyncSmtpSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
     }
 
+    public static func make(
+        host: String,
+        port: UInt16,
+        backend: AsyncTransportBackend = .network,
+        proxy: ProxySettings,
+        timeoutMilliseconds: Int = defaultSmtpTimeoutMs
+    ) async throws -> AsyncSmtpSession {
+        let transport = try await AsyncTransportFactory.make(host: host, port: port, backend: backend, proxy: proxy)
+        return AsyncSmtpSession(transport: transport, timeoutMilliseconds: timeoutMilliseconds)
+    }
+
     @discardableResult
     public func connect() async throws -> SmtpResponse? {
         try await client.start()
