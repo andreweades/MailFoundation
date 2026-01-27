@@ -8,7 +8,7 @@ applications and services.
 ## Origin and goal
 
 This project is a port of the .NET Foundation mail stack originally created by
-Jeffrey Stedfast [MailKit](https://github.com/jstedfast/MailKit)/[https://github.com/jstedfast/MimeKit](MimeKit). 
+Jeffrey Stedfast [MailKit](https://github.com/jstedfast/MailKit)/[MimeKit](https://github.com/jstedfast/MimeKit). 
 The goal is to bring those capabilities and API ergonomics to Swift developers, with modern async/await 
 support and a Swift-native type system.
 
