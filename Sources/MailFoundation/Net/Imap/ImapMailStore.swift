@@ -230,6 +230,9 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
     }
 
     /// Authenticates using SASL with automatic mechanism selection.
+    ///
+    /// - Parameter channelBinding: Optional SCRAM channel binding data. If `nil`, the store uses
+    ///   the transport's TLS channel binding when available.
     public func authenticateSasl(
         user: String,
         password: String,

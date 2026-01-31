@@ -147,6 +147,8 @@ public actor AsyncImapSession {
     ///   - password: The password.
     ///   - mechanisms: Optional list of allowed mechanisms.
     ///   - host: Optional server hostname for DIGEST-MD5 and GSSAPI.
+    ///   - channelBinding: Optional SCRAM channel binding data. If `nil`, the session uses
+    ///     the transport's TLS channel binding when available.
     /// - Returns: The server's response.
     /// - Throws: An error if authentication fails or no mechanism is supported.
     public func authenticateSasl(
@@ -166,12 +168,21 @@ public actor AsyncImapSession {
             availableMechanisms = await client.capabilities?.saslMechanisms() ?? []
         }
 
+        let resolvedChannelBinding: ScramChannelBinding?
+        if let channelBinding {
+            resolvedChannelBinding = channelBinding
+        } else if let tlsTransport = transport as? AsyncStartTlsTransport {
+            resolvedChannelBinding = await tlsTransport.scramChannelBinding
+        } else {
+            resolvedChannelBinding = nil
+        }
+
         guard let authentication = ImapSasl.chooseAuthentication(
             username: user,
             password: password,
             mechanisms: availableMechanisms,
             host: host,
-            channelBinding: channelBinding
+            channelBinding: resolvedChannelBinding
         ) else {
             throw SessionError.imapError(status: .no, text: "No supported SASL mechanisms.")
         }

@@ -1142,6 +1142,7 @@ internal actor BufferedAsyncStartTlsTransport: AsyncStartTlsTransport {
     private var prebuffer: [UInt8]
     private var started = false
     private var finished = false
+    private var scramChannelBindingCache: ScramChannelBinding?
 
     init(transport: AsyncStartTlsTransport, prebuffer: [UInt8]) {
         self.transport = transport
@@ -1151,6 +1152,12 @@ internal actor BufferedAsyncStartTlsTransport: AsyncStartTlsTransport {
             continuation = cont
         }
         self.continuation = continuation
+    }
+
+    public var scramChannelBinding: ScramChannelBinding? {
+        get async {
+            scramChannelBindingCache
+        }
     }
 
     public func start() async throws {
@@ -1170,6 +1177,7 @@ internal actor BufferedAsyncStartTlsTransport: AsyncStartTlsTransport {
         forwardTask?.cancel()
         forwardTask = nil
         await transport.stop()
+        scramChannelBindingCache = nil
         finish()
     }
 
@@ -1179,6 +1187,7 @@ internal actor BufferedAsyncStartTlsTransport: AsyncStartTlsTransport {
 
     public func startTLS(validateCertificate: Bool) async throws {
         try await transport.startTLS(validateCertificate: validateCertificate)
+        scramChannelBindingCache = await transport.scramChannelBinding
     }
 
     private func forwardLoop() async {

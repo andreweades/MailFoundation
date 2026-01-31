@@ -301,6 +301,8 @@ public final class Pop3MailStore: MailServiceBase<Pop3Response>, MailStore {
     ///   - password: The user's password.
     ///   - capabilities: Optional server capabilities. If nil, capabilities will be queried.
     ///   - mechanisms: Optional list of allowed mechanisms. If nil, all supported mechanisms are tried.
+    ///   - channelBinding: Optional SCRAM channel binding data. If `nil`, the store uses
+    ///     the transport's TLS channel binding when available.
     /// - Returns: The server's response to the AUTH command.
     /// - Throws: An error if authentication fails or no suitable mechanism is available.
     ///
@@ -321,13 +323,15 @@ public final class Pop3MailStore: MailServiceBase<Pop3Response>, MailStore {
         user: String,
         password: String,
         capabilities: Pop3Capabilities? = nil,
-        mechanisms: [String]? = nil
+        mechanisms: [String]? = nil,
+        channelBinding: ScramChannelBinding? = nil
     ) throws -> Pop3Response {
         let response = try session.authenticateSasl(
             user: user,
             password: password,
             capabilities: capabilities,
-            mechanisms: mechanisms
+            mechanisms: mechanisms,
+            channelBinding: channelBinding
         )
         updateState(.authenticated)
         _ = try inbox.open(.readOnly)

@@ -70,6 +70,19 @@ func imapChooseAuthenticationScramSha512() {
     #expect(auth?.mechanism == "SCRAM-SHA-512")
 }
 
+@Test("IMAP choose authentication prefers SCRAM-SHA-PLUS when channel binding is provided")
+func imapChooseAuthenticationScramPlus() {
+    let binding = ScramChannelBinding.tlsServerEndPoint(Data([0x01, 0x02]))
+    let auth = ImapSasl.chooseAuthentication(
+        username: "user",
+        password: "password",
+        mechanisms: ["SCRAM-SHA-256", "SCRAM-SHA-256-PLUS", "SCRAM-SHA-1-PLUS"],
+        channelBinding: binding
+    )
+    #expect(auth != nil)
+    #expect(auth?.mechanism == "SCRAM-SHA-256-PLUS")
+}
+
 @Test("IMAP choose authentication prefers SCRAM-SHA-256 over SHA-1")
 func imapChooseAuthenticationScramSha256() {
     let auth = ImapSasl.chooseAuthentication(
@@ -129,6 +142,19 @@ func smtpChooseAuthenticationScramSha512() {
     #expect(auth?.mechanism == "SCRAM-SHA-512")
 }
 
+@Test("SMTP choose authentication prefers SCRAM-SHA-PLUS when channel binding is provided")
+func smtpChooseAuthenticationScramPlus() {
+    let binding = ScramChannelBinding.tlsServerEndPoint(Data([0x0A, 0x0B]))
+    let auth = SmtpSasl.chooseAuthentication(
+        username: "user",
+        password: "password",
+        mechanisms: ["SCRAM-SHA-512", "SCRAM-SHA-512-PLUS", "SCRAM-SHA-256-PLUS"],
+        channelBinding: binding
+    )
+    #expect(auth != nil)
+    #expect(auth?.mechanism == "SCRAM-SHA-512-PLUS")
+}
+
 // MARK: - POP3 SCRAM SASL Tests
 
 @Test("POP3 SCRAM-SHA-1 creation")
@@ -164,6 +190,19 @@ func pop3ChooseAuthenticationScramSha512() {
     )
     #expect(auth != nil)
     #expect(auth?.mechanism == "SCRAM-SHA-512")
+}
+
+@Test("POP3 choose authentication prefers SCRAM-SHA-PLUS when channel binding is provided")
+func pop3ChooseAuthenticationScramPlus() {
+    let binding = ScramChannelBinding.tlsServerEndPoint(Data([0xAA]))
+    let auth = Pop3Sasl.chooseAuthentication(
+        username: "user",
+        password: "password",
+        mechanisms: ["SCRAM-SHA-1", "SCRAM-SHA-1-PLUS", "SCRAM-SHA-256-PLUS"],
+        channelBinding: binding
+    )
+    #expect(auth != nil)
+    #expect(auth?.mechanism == "SCRAM-SHA-256-PLUS")
 }
 
 // MARK: - SCRAM Responder Integration Tests

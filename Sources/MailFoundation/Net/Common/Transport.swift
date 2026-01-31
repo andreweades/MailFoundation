@@ -105,6 +105,12 @@ public protocol Transport: AnyObject {
 /// 4. Call ``startTLS(validateCertificate:)``
 /// 5. Continue with encrypted communication
 public protocol StartTlsTransport: Transport {
+    /// Optional channel binding data for SCRAM-PLUS authentication.
+    ///
+    /// Transports that can access TLS session details should expose a
+    /// ``ScramChannelBinding`` (typically `tls-server-end-point`).
+    var scramChannelBinding: ScramChannelBinding? { get }
+
     /// Upgrades the connection to use TLS encryption.
     ///
     /// This method performs the TLS handshake and upgrades the

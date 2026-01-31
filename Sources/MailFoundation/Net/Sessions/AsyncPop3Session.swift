@@ -297,11 +297,22 @@ public actor AsyncPop3Session {
         return try await authenticate(authentication)
     }
 
+    /// Authenticates using SASL with automatic mechanism selection.
+    ///
+    /// - Parameters:
+    ///   - user: The username.
+    ///   - password: The password.
+    ///   - capabilities: Optional server capabilities. If nil, capabilities will be queried.
+    ///   - mechanisms: Optional list of allowed mechanisms.
+    ///   - channelBinding: Optional SCRAM channel binding data. If `nil`, the session uses
+    ///     the transport's TLS channel binding when available.
+    /// - Returns: The server's response.
     public func authenticateSasl(
         user: String,
         password: String,
         capabilities: Pop3Capabilities? = nil,
-        mechanisms: [String]? = nil
+        mechanisms: [String]? = nil,
+        channelBinding: ScramChannelBinding? = nil
     ) async throws -> Pop3Response? {
         let availableMechanisms: [String]
         if let mechanisms {
@@ -314,10 +325,20 @@ public actor AsyncPop3Session {
             availableMechanisms = []
         }
 
+        let resolvedChannelBinding: ScramChannelBinding?
+        if let channelBinding {
+            resolvedChannelBinding = channelBinding
+        } else if let tlsTransport = transport as? AsyncStartTlsTransport {
+            resolvedChannelBinding = await tlsTransport.scramChannelBinding
+        } else {
+            resolvedChannelBinding = nil
+        }
+
         guard let authentication = Pop3Sasl.chooseAuthentication(
             username: user,
             password: password,
-            mechanisms: availableMechanisms
+            mechanisms: availableMechanisms,
+            channelBinding: resolvedChannelBinding
         ) else {
             throw SessionError.pop3Error(message: "No supported SASL mechanisms.")
         }

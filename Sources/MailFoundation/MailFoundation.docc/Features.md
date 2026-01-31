@@ -205,6 +205,9 @@ MailFoundation supports the following SASL authentication mechanisms:
 
 | Mechanism | Security | Description |
 |-----------|----------|-------------|
+| **SCRAM-SHA-512-PLUS** | High | SCRAM-SHA-512 with TLS channel binding |
+| **SCRAM-SHA-256-PLUS** | High | SCRAM-SHA-256 with TLS channel binding |
+| **SCRAM-SHA-1-PLUS** | High | SCRAM-SHA-1 with TLS channel binding |
 | **SCRAM-SHA-512** | High | Salted challenge-response with SHA-512 |
 | **SCRAM-SHA-256** | High | Salted challenge-response with SHA-256 (RFC 7677) |
 | **SCRAM-SHA-1** | High | Salted challenge-response with SHA-1 (RFC 5802) |
@@ -224,7 +227,7 @@ SCRAM (Salted Challenge Response Authentication Mechanism) is the recommended pa
 - Uses PBKDF2 with configurable iteration count for salted password hashing
 - Provides mutual authentication (server proves it knows the password)
 - Protected against replay attacks via unique nonces
-- Supported variants: SHA-512 (strongest), SHA-256, SHA-1
+- Supported variants: SCRAM-PLUS (with TLS channel binding), SHA-512 (strongest), SHA-256, SHA-1
 
 ### Kerberos/GSSAPI Authentication
 
@@ -258,6 +261,7 @@ For Microsoft Exchange servers:
 - Certificate validation with customization
 - Client certificate authentication
 - Configurable cipher suites
+- TLS channel binding (tls-server-end-point) for SCRAM-PLUS
 
 ### Credential Protection
 

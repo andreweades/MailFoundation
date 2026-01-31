@@ -2847,6 +2847,7 @@ final class FailingTransport: TestTransport {
 
 final class StartTlsTestTransport: TestTransport, StartTlsTransport {
     private(set) var didStartTls = false
+    var scramChannelBinding: ScramChannelBinding? { nil }
 
     func startTLS(validateCertificate: Bool) {
         didStartTls = true
@@ -2860,6 +2861,7 @@ actor StartTlsAsyncTransport: AsyncStartTlsTransport {
     private var started = false
     private var sent: [[UInt8]] = []
     private var startTlsValidations: [Bool] = []
+    var scramChannelBinding: ScramChannelBinding? { get async { nil } }
 
     init() {
         var continuation: AsyncStream<[UInt8]>.Continuation!

@@ -139,6 +139,13 @@ public protocol AsyncTransport: AnyObject, Sendable {
 /// - Note: Available on macOS 10.15+ and iOS 13.0+.
 @available(macOS 10.15, iOS 13.0, *)
 public protocol AsyncStartTlsTransport: AsyncTransport {
+    /// Optional channel binding data for SCRAM-PLUS authentication.
+    ///
+    /// Transports that can access TLS session details should expose a
+    /// ``ScramChannelBinding`` (typically `tls-server-end-point`).
+    /// Access this asynchronously after STARTTLS completes.
+    var scramChannelBinding: ScramChannelBinding? { get async }
+
     /// Upgrades the connection to use TLS encryption.
     ///
     /// This method performs the TLS handshake asynchronously.

@@ -97,6 +97,7 @@ private actor FailingStartTlsAsyncTransport: AsyncStartTlsTransport {
     public nonisolated let incoming: AsyncStream<[UInt8]>
     private let continuation: AsyncStream<[UInt8]>.Continuation
     private var started = false
+    var scramChannelBinding: ScramChannelBinding? { get async { nil } }
 
     init() {
         var continuation: AsyncStream<[UInt8]>.Continuation!

@@ -308,19 +308,23 @@ public actor AsyncPop3MailStore: AsyncMailStore {
     ///   - password: The user's password.
     ///   - capabilities: Optional server capabilities. If nil, capabilities will be queried.
     ///   - mechanisms: Optional list of allowed mechanisms. If nil, all supported mechanisms are tried.
+    ///   - channelBinding: Optional SCRAM channel binding data. If `nil`, the store uses
+    ///     the transport's TLS channel binding when available.
     /// - Returns: The server's response to the AUTH command.
     /// - Throws: An error if authentication fails or no suitable mechanism is available.
     public func authenticateSasl(
         user: String,
         password: String,
         capabilities: Pop3Capabilities? = nil,
-        mechanisms: [String]? = nil
+        mechanisms: [String]? = nil,
+        channelBinding: ScramChannelBinding? = nil
     ) async throws -> Pop3Response? {
         let response = try await session.authenticateSasl(
             user: user,
             password: password,
             capabilities: capabilities,
-            mechanisms: mechanisms
+            mechanisms: mechanisms,
+            channelBinding: channelBinding
         )
         await inbox.attachStore(self)
         _ = try await inbox.open(.readOnly)

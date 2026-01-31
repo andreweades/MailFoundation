@@ -42,6 +42,7 @@ public actor NetworkTransport: AsyncStartTlsTransport {
     private var output: OutputStream?
     private var started: Bool = false
     private var readerTask: Task<Void, Never>?
+    private var scramChannelBindingCache: ScramChannelBinding?
 
     public init(host: String, port: UInt16) {
         self.host = host
@@ -51,6 +52,21 @@ public actor NetworkTransport: AsyncStartTlsTransport {
             continuation = cont
         }
         self.continuation = continuation
+    }
+
+    public var scramChannelBinding: ScramChannelBinding? {
+        get async {
+            if let cached = scramChannelBindingCache {
+                return cached
+            }
+            guard let output else {
+                return nil
+            }
+            if let binding = TlsChannelBindingHelper.tlsServerEndPoint(from: output) {
+                scramChannelBindingCache = binding
+            }
+            return scramChannelBindingCache
+        }
     }
 
     public func start() async throws {
@@ -78,6 +94,7 @@ public actor NetworkTransport: AsyncStartTlsTransport {
         readerTask = nil
         input?.close()
         output?.close()
+        scramChannelBindingCache = nil
         continuation.finish()
     }
 
@@ -126,6 +143,7 @@ public actor NetworkTransport: AsyncStartTlsTransport {
         guard inputOk && outputOk else {
             throw AsyncTransportError.connectionFailed
         }
+        scramChannelBindingCache = nil
     }
 
     private func readLoop() async {

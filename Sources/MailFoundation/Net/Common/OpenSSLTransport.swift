@@ -30,6 +30,7 @@
 
 #if canImport(COpenSSL)
 import COpenSSL
+import Foundation
 
 #if canImport(Darwin)
 import Darwin
@@ -58,6 +59,7 @@ public actor OpenSSLTransport: AsyncStartTlsTransport {
     private var sslContext: OpaquePointer?
     private var ssl: OpaquePointer?
     private var tlsEnabled: Bool = false
+    private var scramChannelBindingCache: ScramChannelBinding?
 
     public init(host: String, port: UInt16) {
         self.host = host
@@ -67,6 +69,12 @@ public actor OpenSSLTransport: AsyncStartTlsTransport {
             continuation = cont
         }
         self.continuation = continuation
+    }
+
+    public var scramChannelBinding: ScramChannelBinding? {
+        get async {
+            scramChannelBindingCache
+        }
     }
 
     public func start() async throws {
@@ -197,6 +205,7 @@ public actor OpenSSLTransport: AsyncStartTlsTransport {
             }
         }
 
+        scramChannelBindingCache = buildScramChannelBinding(from: sslObj)
         tlsEnabled = true
     }
 
@@ -413,6 +422,42 @@ public actor OpenSSLTransport: AsyncStartTlsTransport {
             sslContext = nil
         }
         tlsEnabled = false
+        scramChannelBindingCache = nil
+    }
+
+    private func buildScramChannelBinding(from sslObj: OpaquePointer) -> ScramChannelBinding? {
+        // OpenSSL 3.0 renamed SSL_get_peer_certificate to SSL_get1_peer_certificate
+        guard let cert = SSL_get1_peer_certificate(sslObj) else {
+            return nil
+        }
+        defer { X509_free(cert) }
+        guard let certData = derEncodedCertificate(cert) else {
+            return nil
+        }
+        let digest = sha256(certData)
+        return ScramChannelBinding.tlsServerEndPoint(digest)
+    }
+
+    private func derEncodedCertificate(_ cert: OpaquePointer) -> Data? {
+        var buffer: UnsafeMutablePointer<UInt8>?
+        let length = i2d_X509(cert, &buffer)
+        guard length > 0, let buffer else {
+            return nil
+        }
+        // OPENSSL_free is a macro; use CRYPTO_free directly for OpenSSL 3.0
+        defer { CRYPTO_free(buffer, nil, 0) }
+        return Data(bytes: buffer, count: Int(length))
+    }
+
+    private func sha256(_ data: Data) -> Data {
+        var digest = [UInt8](repeating: 0, count: Int(SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes { pointer in
+            guard let base = pointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return
+            }
+            _ = SHA256(base, data.count, &digest)
+        }
+        return Data(digest)
     }
 
     private func getSSLErrorMessage(_ errorCode: Int32) -> String {

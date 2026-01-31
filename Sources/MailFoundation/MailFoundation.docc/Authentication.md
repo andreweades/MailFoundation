@@ -71,6 +71,9 @@ MailFoundation supports several SASL authentication mechanisms:
 
 | Mechanism | Security | Description |
 |-----------|----------|-------------|
+| SCRAM-SHA-512-PLUS | High | SCRAM-SHA-512 with TLS channel binding (RFC 5802/5929) |
+| SCRAM-SHA-256-PLUS | High | SCRAM-SHA-256 with TLS channel binding (RFC 7677/5929) |
+| SCRAM-SHA-1-PLUS | High | SCRAM-SHA-1 with TLS channel binding (RFC 5802/5929) |
 | SCRAM-SHA-512 | High | Salted challenge-response with SHA-512 (RFC 7677) |
 | SCRAM-SHA-256 | High | Salted challenge-response with SHA-256 (RFC 7677) |
 | SCRAM-SHA-1 | High | Salted challenge-response with SHA-1 (RFC 5802) |
@@ -81,11 +84,13 @@ MailFoundation supports several SASL authentication mechanisms:
 | LOGIN | Low | Legacy two-step authentication |
 | XOAUTH2 | High | OAuth2 bearer token |
 
-The library automatically selects the most secure mechanism available, preferring SCRAM-SHA-512 when supported:
+The library automatically selects the most secure mechanism available, preferring SCRAM-PLUS variants when TLS channel binding is available:
 
 ```swift
 // The session will negotiate the best available mechanism
-// Preference order: SCRAM-SHA-512 > SCRAM-SHA-256 > SCRAM-SHA-1 > GSSAPI > NTLM > CRAM-MD5 > PLAIN > LOGIN
+// Preference order (when channel binding is available):
+// SCRAM-SHA-512-PLUS > SCRAM-SHA-256-PLUS > SCRAM-SHA-1-PLUS > SCRAM-SHA-512 > SCRAM-SHA-256 > SCRAM-SHA-1
+// > GSSAPI > NTLM > CRAM-MD5 > PLAIN > LOGIN
 try session.authenticate(username: "user", password: "pass")
 ```
 
@@ -125,12 +130,51 @@ let auth = Pop3Sasl.scramSha1(username: "user@example.com", password: "secret")
 try session.authenticate(auth)
 ```
 
+### SCRAM-PLUS (Channel Binding)
+
+SCRAM-PLUS binds the authentication to the TLS channel, protecting against
+credential forwarding attacks on TLS-terminating proxies. When TLS channel
+binding data is available, MailFoundation will automatically prefer SCRAM-PLUS
+mechanisms during `authenticateSasl`.
+
+You can also pass channel binding explicitly:
+
+```swift
+// Use channel binding from a STARTTLS-capable transport (tls-server-end-point)
+if let tlsTransport = transport as? StartTlsTransport,
+   let binding = tlsTransport.scramChannelBinding {
+    let auth = ImapSasl.scramSha256Plus(
+        username: "user@example.com",
+        password: "secret",
+        channelBinding: binding
+    )
+    try session.authenticate(auth)
+}
+```
+
+For async transports:
+
+```swift
+if let tlsTransport = transport as? AsyncStartTlsTransport,
+   let binding = await tlsTransport.scramChannelBinding {
+    let auth = ImapSasl.scramSha256Plus(
+        username: "user@example.com",
+        password: "secret",
+        channelBinding: binding
+    )
+    try await session.authenticate(auth)
+}
+```
+
 ### SCRAM Variants
 
 Choose the appropriate SCRAM variant based on server support:
 
 | Variant | Hash Size | Recommendation |
 |---------|-----------|----------------|
+| SCRAM-SHA-512-PLUS | 512 bits | Best security when channel binding is available |
+| SCRAM-SHA-256-PLUS | 256 bits | Recommended when server supports SCRAM-PLUS |
+| SCRAM-SHA-1-PLUS | 160 bits | Legacy channel-binding variant |
 | SCRAM-SHA-512 | 512 bits | Best security, use when available |
 | SCRAM-SHA-256 | 256 bits | Good security, widely supported |
 | SCRAM-SHA-1 | 160 bits | Legacy, use only if others unavailable |

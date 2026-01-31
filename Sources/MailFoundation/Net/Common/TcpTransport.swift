@@ -43,6 +43,19 @@ public final class TcpTransport: StartTlsTransport {
     private var input: InputStream?
     private var output: OutputStream?
     private var isOpen = false
+    private var scramChannelBindingCache: ScramChannelBinding?
+
+    public var scramChannelBinding: ScramChannelBinding? {
+        if let cached = scramChannelBindingCache {
+            return cached
+        }
+        guard let output else { return nil }
+        if let binding = TlsChannelBindingHelper.tlsServerEndPoint(from: output) {
+            scramChannelBindingCache = binding
+            return binding
+        }
+        return nil
+    }
 
     public init(host: String, port: Int, mode: Mode = .tcp, bufferSize: Int = 4096) {
         self.host = host
@@ -70,6 +83,7 @@ public final class TcpTransport: StartTlsTransport {
         isOpen = false
         input?.close()
         output?.close()
+        scramChannelBindingCache = nil
     }
 
     public func write(_ bytes: [UInt8]) -> Int {
@@ -104,6 +118,7 @@ public final class TcpTransport: StartTlsTransport {
         if let input, let output {
             configureTLS(input: input, output: output)
         }
+        scramChannelBindingCache = nil
     }
 
     private func configureTLS(input: InputStream, output: OutputStream) {

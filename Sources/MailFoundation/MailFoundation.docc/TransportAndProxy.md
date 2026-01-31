@@ -405,6 +405,8 @@ let response = try transport.readLine()
 // Upgrade to TLS
 if let tlsTransport = transport as? StartTlsTransport {
     try tlsTransport.startTls()
+    // Optional SCRAM-PLUS channel binding (tls-server-end-point)
+    let channelBinding = tlsTransport.scramChannelBinding
 }
 
 // Close

@@ -62,10 +62,12 @@ public struct ScramChannelBinding: Sendable, Equatable {
         self.data = data
     }
 
+    /// Creates a `tls-unique` channel binding value.
     public static func tlsUnique(_ data: Data) -> ScramChannelBinding {
         ScramChannelBinding(name: "tls-unique", data: data)
     }
 
+    /// Creates a `tls-server-end-point` channel binding value.
     public static func tlsServerEndPoint(_ data: Data) -> ScramChannelBinding {
         ScramChannelBinding(name: "tls-server-end-point", data: data)
     }
@@ -154,6 +156,7 @@ public final class ScramContext: @unchecked Sendable {
     ///   - password: The password.
     ///   - algorithm: The hash algorithm variant.
     ///   - authorizationId: Optional authorization identity.
+    ///   - channelBinding: Optional channel binding data for SCRAM-PLUS.
     public init(
         username: String,
         password: String,
