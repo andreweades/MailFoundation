@@ -78,6 +78,27 @@ public actor AsyncImapMailStore: AsyncMailStore {
     private var selectedFolderStorage: AsyncImapFolder?
     private var selectedAccessStorage: FolderAccess?
 
+    /// The capabilities advertised by the server.
+    public var capabilities: ImapCapabilities? {
+        get async {
+            await session.capabilities
+        }
+    }
+
+    /// The last known namespace response, if queried.
+    public var namespaces: ImapNamespaceResponse? {
+        get async {
+            await session.namespaces
+        }
+    }
+
+    /// Mailboxes marked as special-use by the server.
+    public var specialUseMailboxes: [ImapMailbox] {
+        get async {
+            await session.specialUseMailboxes
+        }
+    }
+
     /// The timeout for network operations in milliseconds.
     ///
     /// Default is 120000 (2 minutes), matching MailKit's default.
@@ -174,6 +195,53 @@ public actor AsyncImapMailStore: AsyncMailStore {
     /// - Throws: An error if authentication fails.
     public func authenticate(user: String, password: String) async throws -> ImapResponse? {
         try await session.login(user: user, password: password)
+    }
+
+    /// Authenticates using SASL mechanism.
+    ///
+    /// - Parameter auth: The SASL authentication configuration.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails.
+    public func authenticate(_ auth: ImapAuthentication) async throws -> ImapResponse? {
+        try await session.authenticate(auth)
+    }
+
+    /// Authenticates using XOAUTH2 with an OAuth access token.
+    ///
+    /// This method is used for OAuth 2.0 authentication with services like Gmail
+    /// and Outlook.com. You must obtain an access token from the OAuth provider
+    /// before using this method.
+    ///
+    /// - Parameters:
+    ///   - user: The username or email address.
+    ///   - accessToken: The OAuth 2.0 access token.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let store = try AsyncImapMailStore.make(host: "imap.gmail.com", port: 993, backend: .network)
+    /// try await store.connect()
+    /// try await store.authenticateXoauth2(user: "user@gmail.com", accessToken: "ya29.a0AfH6SMB...")
+    /// ```
+    public func authenticateXoauth2(user: String, accessToken: String) async throws -> ImapResponse? {
+        try await session.authenticateXoauth2(user: user, accessToken: accessToken)
+    }
+
+    /// Authenticates using SASL with automatic mechanism selection.
+    public func authenticateSasl(
+        user: String,
+        password: String,
+        mechanisms: [String]? = nil,
+        host: String? = nil
+    ) async throws -> ImapResponse? {
+        try await session.authenticateSasl(
+            user: user,
+            password: password,
+            mechanisms: mechanisms,
+            host: host
+        )
     }
 
     /// The current state of the mail service.

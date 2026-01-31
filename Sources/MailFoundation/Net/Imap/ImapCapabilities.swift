@@ -89,6 +89,29 @@ public struct ImapCapabilities: Sendable, Equatable {
         capabilities.contains(name.uppercased())
     }
 
+    /// Gets the list of supported SASL authentication mechanisms.
+    ///
+    /// IMAP servers advertise SASL mechanisms as capability tokens such as
+    /// `AUTH=PLAIN` or `AUTH=SCRAM-SHA-256`.
+    ///
+    /// - Returns: An array of supported mechanism names in uppercase.
+    public func saslMechanisms() -> [String] {
+        var result: [String] = []
+        var seen: Set<String> = []
+
+        for token in rawTokens {
+            let upper = token.uppercased()
+            guard upper.hasPrefix("AUTH=") else { continue }
+            let value = String(upper.dropFirst("AUTH=".count))
+            guard !value.isEmpty else { continue }
+            if seen.insert(value).inserted {
+                result.append(value)
+            }
+        }
+
+        return result
+    }
+
     /// Parses capabilities from an IMAP response line.
     ///
     /// This method can parse capabilities from both untagged CAPABILITY responses

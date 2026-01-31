@@ -87,6 +87,21 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
     /// if opened with `SELECT`. Returns `nil` if no folder is selected.
     public private(set) var selectedAccess: FolderAccess?
 
+    /// The capabilities advertised by the server.
+    public var capabilities: ImapCapabilities? {
+        session.capabilities
+    }
+
+    /// The last known namespace response, if queried.
+    public var namespaces: ImapNamespaceResponse? {
+        session.namespaces
+    }
+
+    /// Mailboxes marked as special-use by the server.
+    public var specialUseMailboxes: [ImapMailbox] {
+        session.specialUseMailboxes
+    }
+
     /// The protocol name used for logging purposes.
     public override var protocolName: String { "IMAP" }
 
@@ -172,6 +187,7 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
     public override func connect() throws -> ImapResponse {
         let response = try session.connect()
         updateState(.connected)
+        updateAuthenticationMechanisms(session.capabilities?.saslMechanisms() ?? [])
         return response
     }
 
@@ -197,6 +213,45 @@ public final class ImapMailStore: MailServiceBase<ImapResponse>, MailStore {
     public func authenticate(user: String, password: String) throws -> ImapResponse {
         let response = try session.login(user: user, password: password)
         updateState(.authenticated)
+        updateAuthenticationMechanisms(session.capabilities?.saslMechanisms() ?? [])
+        return response
+    }
+
+    /// Authenticates using SASL mechanism.
+    ///
+    /// - Parameter auth: The SASL authentication configuration.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails.
+    public func authenticate(_ auth: ImapAuthentication) throws -> ImapResponse {
+        let response = try session.authenticate(auth)
+        updateState(.authenticated)
+        updateAuthenticationMechanisms(session.capabilities?.saslMechanisms() ?? [])
+        return response
+    }
+
+    /// Authenticates using SASL with automatic mechanism selection.
+    public func authenticateSasl(
+        user: String,
+        password: String,
+        mechanisms: [String]? = nil,
+        host: String? = nil
+    ) throws -> ImapResponse {
+        let response = try session.authenticateSasl(
+            user: user,
+            password: password,
+            mechanisms: mechanisms,
+            host: host
+        )
+        updateState(.authenticated)
+        updateAuthenticationMechanisms(session.capabilities?.saslMechanisms() ?? [])
+        return response
+    }
+
+    /// Authenticates using XOAUTH2 with an OAuth access token.
+    public func authenticateXoauth2(user: String, accessToken: String) throws -> ImapResponse {
+        let response = try session.authenticateXoauth2(user: user, accessToken: accessToken)
+        updateState(.authenticated)
+        updateAuthenticationMechanisms(session.capabilities?.saslMechanisms() ?? [])
         return response
     }
 

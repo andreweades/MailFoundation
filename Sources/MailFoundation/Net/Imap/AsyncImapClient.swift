@@ -45,6 +45,7 @@ public actor AsyncImapClient {
     private var literalDecoder = ImapLiteralDecoder()
     private var tagGenerator = ImapTagGenerator()
     private var pending: [String: PendingCommand] = [:]
+    private let detector = ImapAuthenticationSecretDetector()
 
     public enum State: Sendable {
         case disconnected
@@ -56,7 +57,12 @@ public actor AsyncImapClient {
 
     public private(set) var state: State = .disconnected
     public private(set) var capabilities: ImapCapabilities?
-    public var protocolLogger: ProtocolLoggerType
+    public private(set) var capabilitiesVersion: Int = 0
+    public var protocolLogger: ProtocolLoggerType {
+        didSet {
+            protocolLogger.authenticationSecretDetector = detector
+        }
+    }
 
     public var isDisconnected: Bool {
         state == .disconnected
@@ -65,6 +71,7 @@ public actor AsyncImapClient {
     public init(transport: AsyncTransport, protocolLogger: ProtocolLoggerType = NullProtocolLogger()) {
         self.transport = transport
         self.protocolLogger = protocolLogger
+        self.protocolLogger.authenticationSecretDetector = detector
     }
 
     public func start() async throws {
@@ -147,6 +154,7 @@ public actor AsyncImapClient {
             }
             if let parsed = ImapCapabilities.parse(from: message.line) {
                 capabilities = parsed
+                capabilitiesVersion += 1
             }
         }
         return messages
@@ -189,12 +197,79 @@ public actor AsyncImapClient {
     }
 
     public func login(user: String, password: String) async throws -> ImapResponse? {
+        detector.isAuthenticating = true
+        defer { detector.isAuthenticating = false }
         let command = try await send(.login(user, password))
         let response = await waitForTagged(command.tag)
         if response?.status == .ok {
             state = .authenticated
         } else if response != nil {
             state = .connected
+        }
+        return response
+    }
+
+    /// Authenticates using SASL mechanism
+    public func authenticate(_ auth: ImapAuthentication) async throws -> ImapResponse? {
+        let initialCapabilitiesVersion = capabilitiesVersion
+        let supportsSaslIr = capabilities?.supports("SASL-IR") ?? false
+        let initialResponse = supportsSaslIr ? auth.initialResponse : nil
+        var pendingInitialResponse = supportsSaslIr ? nil : auth.initialResponse
+        let command = try await send(.authenticate(auth.mechanism, initialResponse: initialResponse))
+        detector.isAuthenticating = true
+        defer { detector.isAuthenticating = false }
+
+        // Handle challenge-response if needed
+        if auth.responder != nil || pendingInitialResponse != nil {
+            while true {
+                let messages = await nextMessages()
+                if messages.isEmpty {
+                    return nil
+                }
+                for message in messages {
+                    if let response = message.response {
+                        // Check for tagged response (success or failure)
+                        if case let .tagged(tag) = response.kind, tag == command.tag {
+                            if response.status == .ok {
+                                state = .authenticated
+                            } else {
+                                state = .connected
+                            }
+                            return response
+                        }
+                        // Check for continuation request
+                        if case .continuation = response.kind {
+                            let challenge = response.text ?? ""
+                            let responseData: String
+                            if let initial = pendingInitialResponse {
+                                responseData = initial
+                                pendingInitialResponse = nil
+                            } else if let responder = auth.responder {
+                                responseData = try responder(challenge)
+                            } else {
+                                responseData = ""
+                            }
+                            if responseData.isEmpty {
+                                // Empty response for final verification
+                                try await sendLiteral(Array("\r\n".utf8))
+                            } else {
+                                try await sendLiteral(Array("\(responseData)\r\n".utf8))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // No responder - just wait for tagged response
+        let response = await waitForTagged(command.tag)
+        if response?.status == .ok {
+            state = .authenticated
+        } else if response != nil {
+            state = .connected
+        }
+        if response?.status == .ok, capabilitiesVersion == initialCapabilitiesVersion {
+            _ = try? await capability()
         }
         return response
     }

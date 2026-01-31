@@ -34,6 +34,12 @@ public final class ImapSession {
     private let maxReads: Int
     public private(set) var selectedMailbox: String?
     public private(set) var selectedState = ImapSelectedState()
+    public private(set) var namespaces: ImapNamespaceResponse?
+    public private(set) var specialUseMailboxes: [ImapMailbox] = []
+
+    public var capabilities: ImapCapabilities? {
+        client.capabilities
+    }
 
     public init(transport: Transport, protocolLogger: ProtocolLoggerType = NullProtocolLogger(), maxReads: Int = 10) {
         self.transport = transport
@@ -58,6 +64,8 @@ public final class ImapSession {
         transport.close()
         selectedMailbox = nil
         selectedState = ImapSelectedState()
+        namespaces = nil
+        specialUseMailboxes = []
     }
 
     public func capability() throws -> ImapResponse {
@@ -73,6 +81,7 @@ public final class ImapSession {
     }
 
     public func login(user: String, password: String) throws -> ImapResponse {
+        let initialCapabilitiesVersion = client.capabilitiesVersion
         let command = client.send(.login(user, password))
         try ensureWrite()
         guard let response = client.waitForTagged(command.tag, maxReads: maxReads) else {
@@ -81,7 +90,111 @@ public final class ImapSession {
         guard response.isOk else {
             throw SessionError.imapError(status: response.status, text: response.text)
         }
+        if client.capabilitiesVersion == initialCapabilitiesVersion {
+            _ = try? capability()
+        }
+        try postAuthenticate()
         return response
+    }
+
+    /// Authenticates using SASL mechanism.
+    ///
+    /// - Parameter auth: The SASL authentication configuration.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails.
+    public func authenticate(_ auth: ImapAuthentication) throws -> ImapResponse {
+        let initialCapabilitiesVersion = client.capabilitiesVersion
+        let supportsSaslIr = client.capabilities?.supports("SASL-IR") ?? false
+        var pendingInitialResponse = supportsSaslIr ? nil : auth.initialResponse
+        let command = client.send(.authenticate(auth.mechanism, initialResponse: supportsSaslIr ? auth.initialResponse : nil))
+        try ensureWrite()
+
+        var reads = 0
+        while reads < maxReads {
+            let messages = client.receiveWithLiterals()
+            if messages.isEmpty {
+                reads += 1
+                continue
+            }
+            for message in messages {
+                if let response = message.response {
+                    if case .continuation = response.kind {
+                        let challenge = response.text
+                        let responseData: String
+                        if let initial = pendingInitialResponse {
+                            responseData = initial
+                            pendingInitialResponse = nil
+                        } else if let responder = auth.responder {
+                            responseData = try responder(challenge)
+                        } else {
+                            responseData = ""
+                        }
+
+                        if responseData.isEmpty {
+                            client.sendLiteral(Array("\r\n".utf8))
+                        } else {
+                            client.sendLiteral(Array("\(responseData)\r\n".utf8))
+                        }
+                        try ensureWrite()
+                        continue
+                    }
+                    if case let .tagged(tag) = response.kind, tag == command.tag {
+                        guard response.isOk else {
+                            throw SessionError.imapError(status: response.status, text: response.text)
+                        }
+                        if client.capabilitiesVersion == initialCapabilitiesVersion {
+                            _ = try? capability()
+                        }
+                        try postAuthenticate()
+                        return response
+                    }
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    /// Authenticates using XOAUTH2 with an OAuth access token.
+    public func authenticateXoauth2(user: String, accessToken: String) throws -> ImapResponse {
+        let auth = ImapSasl.xoauth2(username: user, accessToken: accessToken)
+        return try authenticate(auth)
+    }
+
+    /// Authenticates using SASL with automatic mechanism selection.
+    ///
+    /// - Parameters:
+    ///   - user: The username.
+    ///   - password: The password.
+    ///   - mechanisms: Optional list of allowed mechanisms.
+    ///   - host: Optional server hostname for DIGEST-MD5 and GSSAPI.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails or no mechanism is supported.
+    public func authenticateSasl(
+        user: String,
+        password: String,
+        mechanisms: [String]? = nil,
+        host: String? = nil
+    ) throws -> ImapResponse {
+        let availableMechanisms: [String]
+        if let mechanisms {
+            availableMechanisms = mechanisms
+        } else {
+            if client.capabilities == nil {
+                _ = try? capability()
+            }
+            availableMechanisms = client.capabilities?.saslMechanisms() ?? []
+        }
+
+        guard let authentication = ImapSasl.chooseAuthentication(
+            username: user,
+            password: password,
+            mechanisms: availableMechanisms,
+            host: host
+        ) else {
+            throw SessionError.imapError(status: .no, text: "No supported SASL mechanisms.")
+        }
+        return try authenticate(authentication)
     }
 
     public func noop() throws -> ImapResponse {
@@ -1372,6 +1485,17 @@ public final class ImapSession {
     private func ensureWrite() throws {
         if !client.lastWriteSucceeded {
             throw SessionError.transportWriteFailed
+        }
+    }
+
+    private func postAuthenticate() throws {
+        if client.capabilities?.supports("NAMESPACE") == true {
+            namespaces = try? namespace()
+        }
+        if let caps = client.capabilities, caps.supports("SPECIAL-USE") || caps.supports("XLIST") {
+            if let list = try? list(reference: "", mailbox: "*") {
+                specialUseMailboxes = list.filter { $0.specialUse != nil }
+            }
         }
     }
 

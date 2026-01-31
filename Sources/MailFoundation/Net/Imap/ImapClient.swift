@@ -120,6 +120,7 @@ public final class ImapClient {
     ///
     /// This is populated after connecting and may be updated after authentication.
     public private(set) var capabilities: ImapCapabilities?
+    public private(set) var capabilitiesVersion: Int = 0
 
     /// Whether the last write operation succeeded.
     public private(set) var lastWriteSucceeded: Bool = true
@@ -247,6 +248,15 @@ public final class ImapClient {
         return bytes
     }
 
+    /// Sends raw bytes directly.
+    ///
+    /// - Parameter bytes: The raw bytes to send.
+    public func sendLiteral(_ bytes: [UInt8]) {
+        protocolLogger.logClient(bytes, offset: 0, count: bytes.count)
+        let written = transport?.write(bytes) ?? 0
+        lastWriteSucceeded = written == bytes.count
+    }
+
     /// Processes incoming data and returns parsed responses.
     ///
     /// - Parameter bytes: The incoming data.
@@ -271,6 +281,7 @@ public final class ImapClient {
             }
             if let parsed = ImapCapabilities.parse(from: message.line) {
                 capabilities = parsed
+                capabilitiesVersion += 1
             }
         }
         return messages

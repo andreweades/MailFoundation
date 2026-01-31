@@ -85,6 +85,40 @@ public struct ImapAuthentication: Sendable {
     }
 }
 
+// MARK: - Adapter
+
+extension ImapAuthentication {
+    /// Creates an IMAP authentication configuration from a unified SASL mechanism.
+    ///
+    /// - Parameter mechanism: The SASL mechanism to adapt.
+    public init(mechanism: SaslMechanism) {
+        self.mechanism = mechanism.name
+
+        var initial: String? = nil
+        if mechanism.supportsInitialResponse {
+            if let data = try? mechanism.initialResponse() {
+                initial = Data(data).base64EncodedString()
+            }
+        }
+        self.initialResponse = initial
+
+        self.responder = { challengeBase64 in
+            let trimmed = challengeBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+            let challengeData: [UInt8]
+            if trimmed.isEmpty || trimmed == "+" {
+                challengeData = []
+            } else if let data = Data(base64Encoded: trimmed) {
+                challengeData = Array(data)
+            } else {
+                challengeData = Array(trimmed.utf8)
+            }
+
+            let responseBytes = try mechanism.challenge(challengeData)
+            return Data(responseBytes).base64EncodedString()
+        }
+    }
+}
+
 /// Factory methods for creating SASL authentication configurations for IMAP.
 ///
 /// `ImapSasl` provides static methods for creating ``ImapAuthentication``
@@ -98,7 +132,11 @@ public struct ImapAuthentication: Sendable {
 /// - `PLAIN` - Simple username/password in a single base64-encoded string
 /// - `LOGIN` - Challenge-response with separate username and password prompts
 /// - `NTLM` - Microsoft NTLM challenge-response authentication (NTLMv2)
+/// - `CRAM-MD5` - Challenge-response using HMAC-MD5 (requires CryptoKit)
+/// - `DIGEST-MD5` - Digest challenge-response (requires CryptoKit)
 /// - `XOAUTH2` - OAuth 2.0 bearer token authentication
+/// - `OAUTHBEARER` - OAuth 2.0 bearer token authentication (RFC 7628)
+/// - `EXTERNAL` - External authentication (TLS client certs, etc.)
 ///
 /// ## Security Considerations
 ///
@@ -106,7 +144,8 @@ public struct ImapAuthentication: Sendable {
 /// - `PLAIN` sends credentials in base64 (not encrypted) - use only over TLS
 /// - `LOGIN` is similar to PLAIN but uses challenge-response
 /// - `NTLM` never sends the password but uses legacy cryptography
-/// - `XOAUTH2` is recommended for services that support OAuth
+/// - `XOAUTH2`/`OAUTHBEARER` are recommended for services that support OAuth
+/// - `EXTERNAL` is used when the server authenticates via external mechanisms (e.g., TLS client certs)
 public enum ImapSasl {
     /// Encodes a string as base64.
     ///
@@ -195,6 +234,89 @@ public enum ImapSasl {
         return ImapAuthentication(
             mechanism: "XOAUTH2",
             initialResponse: base64(payload)
+        )
+    }
+
+    /// Creates an OAUTHBEARER SASL authentication configuration.
+    ///
+    /// OAUTHBEARER is similar to XOAUTH2 but supports additional parameters
+    /// like host and port (RFC 7628).
+    ///
+    /// - Parameters:
+    ///   - username: The username or email address.
+    ///   - accessToken: The OAuth 2.0 access token.
+    ///   - host: Optional host name for the server.
+    ///   - port: Optional port number.
+    ///   - authorizationId: Optional authorization identity override.
+    /// - Returns: An ``ImapAuthentication`` configured for OAUTHBEARER.
+    public static func oauthBearer(
+        username: String,
+        accessToken: String,
+        host: String? = nil,
+        port: Int? = nil,
+        authorizationId: String? = nil
+    ) -> ImapAuthentication {
+        ImapAuthentication(
+            mechanism: OAuthBearerSaslMechanism(
+                username: username,
+                accessToken: accessToken,
+                host: host,
+                port: port,
+                authorizationId: authorizationId
+            )
+        )
+    }
+
+    /// Creates an EXTERNAL SASL authentication configuration.
+    ///
+    /// - Parameter authorizationId: Optional authorization identity.
+    /// - Returns: An ``ImapAuthentication`` configured for EXTERNAL.
+    public static func external(authorizationId: String? = nil) -> ImapAuthentication {
+        ImapAuthentication(mechanism: ExternalSaslMechanism(authorizationId: authorizationId))
+    }
+
+    /// Creates a CRAM-MD5 SASL authentication configuration.
+    ///
+    /// CRAM-MD5 uses challenge-response authentication where the password
+    /// is never sent over the network. Requires CryptoKit.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    /// - Returns: An ``ImapAuthentication`` configured for CRAM-MD5, or nil if unavailable.
+    public static func cramMd5(
+        username: String,
+        password: String
+    ) -> ImapAuthentication? {
+        guard hmacMd5Available else { return nil }
+        return ImapAuthentication(mechanism: CramMd5SaslMechanism(username: username, password: password))
+    }
+
+    /// Creates a DIGEST-MD5 SASL authentication configuration.
+    ///
+    /// - Parameters:
+    ///   - username: The username.
+    ///   - password: The user's password.
+    ///   - host: The server hostname.
+    ///   - service: The service name (default: "imap").
+    ///   - authorizationId: Optional authorization identity.
+    /// - Returns: An ``ImapAuthentication`` configured for DIGEST-MD5, or nil if unavailable.
+    public static func digestMd5(
+        username: String,
+        password: String,
+        host: String,
+        service: String = "imap",
+        authorizationId: String? = nil
+    ) -> ImapAuthentication? {
+        guard md5Available else { return nil }
+        return ImapAuthentication(
+            mechanism: DigestMd5SaslMechanism(
+                username: username,
+                password: password,
+                host: host,
+                service: service,
+                authorizationId: authorizationId
+            )
         )
     }
 
@@ -424,8 +546,10 @@ public enum ImapSasl {
     /// 3. SCRAM-SHA-1
     /// 4. GSSAPI (Kerberos, if available)
     /// 5. NTLM (for Exchange servers)
-    /// 6. PLAIN
-    /// 7. LOGIN
+    /// 6. DIGEST-MD5 (if available)
+    /// 7. CRAM-MD5 (if available)
+    /// 8. PLAIN
+    /// 9. LOGIN
     ///
     /// - Parameters:
     ///   - username: The username.
@@ -464,6 +588,21 @@ public enum ImapSasl {
             return ntlm(username: username, password: password)
         }
 
+        // DIGEST-MD5
+        if normalized.contains("DIGEST-MD5"),
+           let host,
+           let digest = digestMd5(username: username, password: password, host: host)
+        {
+            return digest
+        }
+
+        // CRAM-MD5
+        if normalized.contains("CRAM-MD5"),
+           let cram = cramMd5(username: username, password: password)
+        {
+            return cram
+        }
+
         // Plain text (use only over TLS)
         if normalized.contains("PLAIN") {
             return plain(username: username, password: password)
@@ -474,6 +613,22 @@ public enum ImapSasl {
         return nil
     }
 }
+
+private let hmacMd5Available: Bool = {
+    #if canImport(CryptoKit)
+    return true
+    #else
+    return false
+    #endif
+}()
+
+private let md5Available: Bool = {
+    #if canImport(CryptoKit)
+    return true
+    #else
+    return false
+    #endif
+}()
 
 /// Internal state holder for SCRAM SASL authentication.
 final class ScramSaslState: @unchecked Sendable {

@@ -37,6 +37,14 @@ public actor AsyncImapSession {
     private let transport: AsyncTransport
     public private(set) var selectedMailbox: String?
     public private(set) var selectedState = ImapSelectedState()
+    public private(set) var namespaces: ImapNamespaceResponse?
+    public private(set) var specialUseMailboxes: [ImapMailbox] = []
+
+    public var capabilities: ImapCapabilities? {
+        get async {
+            await client.capabilities
+        }
+    }
 
     /// The timeout for network operations in milliseconds.
     ///
@@ -91,6 +99,8 @@ public actor AsyncImapSession {
         await client.stop()
         selectedMailbox = nil
         selectedState = ImapSelectedState()
+        namespaces = nil
+        specialUseMailboxes = []
     }
 
     public func capability() async throws -> ImapResponse? {
@@ -101,8 +111,69 @@ public actor AsyncImapSession {
 
     public func login(user: String, password: String) async throws -> ImapResponse? {
         try await withSessionTimeout {
-            try await self.client.login(user: user, password: password)
+            let initialCapabilitiesVersion = await self.client.capabilitiesVersion
+            let response = try await self.client.login(user: user, password: password)
+            if response?.isOk == true {
+                if await self.client.capabilitiesVersion == initialCapabilitiesVersion {
+                    _ = try? await self.capability()
+                }
+                await self.postAuthenticate()
+            }
+            return response
         }
+    }
+
+    /// Authenticates using SASL mechanism
+    public func authenticate(_ auth: ImapAuthentication) async throws -> ImapResponse? {
+        try await withSessionTimeout {
+            let response = try await self.client.authenticate(auth)
+            if response?.isOk == true {
+                await self.postAuthenticate()
+            }
+            return response
+        }
+    }
+
+    /// Authenticates using XOAUTH2 with an OAuth access token
+    public func authenticateXoauth2(user: String, accessToken: String) async throws -> ImapResponse? {
+        let auth = ImapSasl.xoauth2(username: user, accessToken: accessToken)
+        return try await authenticate(auth)
+    }
+
+    /// Authenticates using SASL with automatic mechanism selection.
+    ///
+    /// - Parameters:
+    ///   - user: The username.
+    ///   - password: The password.
+    ///   - mechanisms: Optional list of allowed mechanisms.
+    ///   - host: Optional server hostname for DIGEST-MD5 and GSSAPI.
+    /// - Returns: The server's response.
+    /// - Throws: An error if authentication fails or no mechanism is supported.
+    public func authenticateSasl(
+        user: String,
+        password: String,
+        mechanisms: [String]? = nil,
+        host: String? = nil
+    ) async throws -> ImapResponse? {
+        let availableMechanisms: [String]
+        if let mechanisms {
+            availableMechanisms = mechanisms
+        } else {
+            if await client.capabilities == nil {
+                _ = try? await capability()
+            }
+            availableMechanisms = await client.capabilities?.saslMechanisms() ?? []
+        }
+
+        guard let authentication = ImapSasl.chooseAuthentication(
+            username: user,
+            password: password,
+            mechanisms: availableMechanisms,
+            host: host
+        ) else {
+            throw SessionError.imapError(status: .no, text: "No supported SASL mechanisms.")
+        }
+        return try await authenticate(authentication)
     }
 
     public func noop() async throws -> ImapResponse? {
@@ -135,6 +206,17 @@ public actor AsyncImapSession {
 
     private func withSessionTimeout<T: Sendable>(_ operation: @Sendable @escaping () async throws -> T) async throws -> T {
         try await withTimeout(milliseconds: timeoutMilliseconds, operation: operation)
+    }
+
+    private func postAuthenticate() async {
+        if await client.capabilities?.supports("NAMESPACE") == true {
+            namespaces = try? await namespace()
+        }
+        if let caps = await client.capabilities, caps.supports("SPECIAL-USE") || caps.supports("XLIST") {
+            if let list = try? await list(reference: "", mailbox: "*") {
+                specialUseMailboxes = list.filter { $0.specialUse != nil }
+            }
+        }
     }
 
     public func enable(_ capabilities: [String], maxEmptyReads: Int = 10) async throws -> [String] {
