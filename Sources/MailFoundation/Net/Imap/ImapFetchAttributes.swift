@@ -65,6 +65,7 @@ import Foundation
 /// - `modSeq` - The modification sequence (CONDSTORE)
 /// - `envelopeRaw` - The raw ENVELOPE data
 /// - `bodyStructure` - The raw BODYSTRUCTURE data
+/// - `previewText` - The preview text (IMAP PREVIEW extension)
 ///
 /// ## See Also
 ///
@@ -96,6 +97,12 @@ public struct ImapFetchAttributes: Sendable, Equatable {
     /// The raw BODY data as a string (if BODY was fetched).
     public let body: String?
 
+    /// The preview text returned by the IMAP PREVIEW extension, if present.
+    public let previewText: String?
+
+    /// Indicates whether a PREVIEW attribute was present in the FETCH response.
+    public let previewTextPresent: Bool
+
     /// Creates a new fetch attributes instance.
     ///
     /// - Parameters:
@@ -115,7 +122,9 @@ public struct ImapFetchAttributes: Sendable, Equatable {
         modSeq: UInt64? = nil,
         envelopeRaw: String? = nil,
         bodyStructure: String? = nil,
-        body: String? = nil
+        body: String? = nil,
+        previewText: String? = nil,
+        previewTextPresent: Bool = false
     ) {
         self.flags = flags
         self.uid = uid
@@ -125,6 +134,8 @@ public struct ImapFetchAttributes: Sendable, Equatable {
         self.envelopeRaw = envelopeRaw
         self.bodyStructure = bodyStructure
         self.body = body
+        self.previewText = previewText
+        self.previewTextPresent = previewTextPresent
     }
 
     /// Parses attributes from a FETCH response.
@@ -169,6 +180,8 @@ public struct ImapFetchAttributes: Sendable, Equatable {
         var envelopeRaw: String?
         var bodyStructure: String?
         var body: String?
+        var previewText: String?
+        var previewTextPresent = false
 
         while let token = reader.peekToken() {
             if token.type == .closeParen {
@@ -212,6 +225,9 @@ public struct ImapFetchAttributes: Sendable, Equatable {
                 } else {
                     reader.skipValue()
                 }
+            case "PREVIEW":
+                previewTextPresent = true
+                previewText = reader.readNString()
             default:
                 reader.skipValue()
             }
@@ -225,7 +241,9 @@ public struct ImapFetchAttributes: Sendable, Equatable {
             modSeq: modSeq,
             envelopeRaw: envelopeRaw,
             bodyStructure: bodyStructure,
-            body: body
+            body: body,
+            previewText: previewText,
+            previewTextPresent: previewTextPresent
         )
     }
 

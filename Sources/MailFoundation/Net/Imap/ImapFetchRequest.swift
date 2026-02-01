@@ -35,23 +35,43 @@ public struct FetchRequest: Sendable, Equatable {
     public var items: MessageSummaryItems
     public var headers: HeaderSet?
     public var changedSince: UInt64?
+    /// Options that control how preview text is requested.
+    public var previewOptions: PreviewOptions
 
-    public init(items: MessageSummaryItems = .none, headers: HeaderSet? = nil, changedSince: UInt64? = nil) {
+    public init(
+        items: MessageSummaryItems = .none,
+        headers: HeaderSet? = nil,
+        changedSince: UInt64? = nil,
+        previewOptions: PreviewOptions = .none
+    ) {
         self.items = items
         self.headers = headers
         self.changedSince = changedSince
+        self.previewOptions = previewOptions
     }
 
-    public init(items: MessageSummaryItems = .none, headers: [HeaderId], changedSince: UInt64? = nil) throws {
+    public init(
+        items: MessageSummaryItems = .none,
+        headers: [HeaderId],
+        changedSince: UInt64? = nil,
+        previewOptions: PreviewOptions = .none
+    ) throws {
         self.items = items
         self.headers = try HeaderSet(headers: headers)
         self.changedSince = changedSince
+        self.previewOptions = previewOptions
     }
 
-    public init(items: MessageSummaryItems = .none, headers: [String], changedSince: UInt64? = nil) throws {
+    public init(
+        items: MessageSummaryItems = .none,
+        headers: [String],
+        changedSince: UInt64? = nil,
+        previewOptions: PreviewOptions = .none
+    ) throws {
         self.items = items
         self.headers = try HeaderSet(headers: headers)
         self.changedSince = changedSince
+        self.previewOptions = previewOptions
     }
 
     public var imapItemList: String {
@@ -59,7 +79,7 @@ public struct FetchRequest: Sendable, Equatable {
     }
 
     public func imapItemList(previewFallback: ImapFetchPartial? = nil) -> String {
-        var tokens = items.imapTokens(includePreview: previewFallback == nil)
+        var tokens = items.imapTokens(includePreview: previewFallback == nil, previewOptions: previewOptions)
         if let headerToken = headerFetchToken(headers: headers, requestHeaders: items.contains(.headers), requestReferences: items.contains(.references)) {
             tokens.append(headerToken)
         }
@@ -122,7 +142,7 @@ public struct FetchRequest: Sendable, Equatable {
 }
 
 private extension MessageSummaryItems {
-    func imapTokens(includePreview: Bool) -> [String] {
+    func imapTokens(includePreview: Bool, previewOptions: PreviewOptions) -> [String] {
         var tokens: [String] = []
 
         if contains(.annotations) { tokens.append("ANNOTATION") }
@@ -139,9 +159,24 @@ private extension MessageSummaryItems {
         if contains(.gmailMessageId) { tokens.append("X-GM-MSGID") }
         if contains(.gmailThreadId) { tokens.append("X-GM-THRID") }
         if contains(.gmailLabels) { tokens.append("X-GM-LABELS") }
-        if includePreview, contains(.previewText) { tokens.append("PREVIEW") }
+        if includePreview, contains(.previewText) {
+            switch previewOptions {
+            case .lazy:
+                tokens.append("PREVIEW (LAZY)")
+            case .none:
+                tokens.append("PREVIEW")
+            }
+        }
         if contains(.saveDate) { tokens.append("SAVEDATE") }
 
         return tokens
     }
+}
+
+/// Options that control how preview text is fetched.
+public enum PreviewOptions: Sendable, Equatable {
+    /// Fetch previews normally (PREVIEW).
+    case none
+    /// Fetch previews lazily (PREVIEW (LAZY)) when supported by the server.
+    case lazy
 }

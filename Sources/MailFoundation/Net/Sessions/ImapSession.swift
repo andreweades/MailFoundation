@@ -1099,8 +1099,10 @@ public final class ImapSession {
     }
 
     public func fetchSummaries(_ set: String, request: FetchRequest, previewLength: Int = 512) throws -> [MessageSummary] {
-        let needsBodies = request.items.contains(.headers) || request.items.contains(.references) || request.items.contains(.previewText)
-        let itemList = request.items.contains(.previewText)
+        let previewSupported = capabilities?.supports("PREVIEW") ?? false
+        let previewViaBody = request.items.contains(.previewText) && !previewSupported
+        let needsBodies = request.items.contains(.headers) || request.items.contains(.references) || previewViaBody
+        let itemList = previewViaBody
             ? request.imapItemList(previewFallback: ImapFetchPartial(start: 0, length: previewLength))
             : request.imapItemList
         let result = try fetchSummariesWithQresync(set, items: itemList, parseBodies: needsBodies)
@@ -1226,8 +1228,10 @@ public final class ImapSession {
     }
 
     public func uidFetchSummaries(_ set: UniqueIdSet, request: FetchRequest, previewLength: Int = 512) throws -> [MessageSummary] {
-        let needsBodies = request.items.contains(.headers) || request.items.contains(.references) || request.items.contains(.previewText)
-        let itemList = request.items.contains(.previewText)
+        let previewSupported = capabilities?.supports("PREVIEW") ?? false
+        let previewViaBody = request.items.contains(.previewText) && !previewSupported
+        let needsBodies = request.items.contains(.headers) || request.items.contains(.references) || previewViaBody
+        let itemList = previewViaBody
             ? request.imapItemList(previewFallback: ImapFetchPartial(start: 0, length: previewLength))
             : request.imapItemList
         let result = try uidFetchSummariesWithQresync(set, items: itemList, parseBodies: needsBodies)

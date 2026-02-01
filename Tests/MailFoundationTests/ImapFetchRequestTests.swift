@@ -55,3 +55,15 @@ func fetchRequestHeaderSetIncludeReferences() throws {
     let request = FetchRequest(items: [.references], headers: headers)
     #expect(request.imapItemList == "BODY.PEEK[HEADER.FIELDS (SUBJECT REFERENCES)]")
 }
+
+@Test("FetchRequest preview options")
+func fetchRequestPreviewOptions() {
+    let defaultPreview = FetchRequest(items: [.previewText])
+    #expect(defaultPreview.imapItemList == "PREVIEW")
+
+    let lazyPreview = FetchRequest(items: [.previewText], previewOptions: .lazy)
+    #expect(lazyPreview.imapItemList == "PREVIEW (LAZY)")
+
+    let fallback = FetchRequest(items: [.previewText], previewOptions: .lazy)
+    #expect(fallback.imapItemList(previewFallback: ImapFetchPartial(start: 0, length: 64)) == "BODY.PEEK[TEXT]<0.64>")
+}

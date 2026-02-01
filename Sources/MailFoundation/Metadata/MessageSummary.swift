@@ -344,8 +344,14 @@ public struct MessageSummary: Sendable, Equatable {
         var headerFetchKind: HeaderFetchKind?
         var references: MessageIdList?
         var previewText: String?
+        let previewTextPresent = attributes.previewTextPresent
 
-        if let bodyMap {
+        if previewTextPresent {
+            previewText = attributes.previewText
+            items.insert(.previewText)
+        }
+
+        if let bodyMap, !previewTextPresent {
             if let headerPayload = headerPayload(from: bodyMap) {
                 headers = HeaderFieldParser.parse(headerPayload.data)
                 headerFetchKind = makeHeaderFetchKind(from: headerPayload)
@@ -423,8 +429,14 @@ public struct MessageSummary: Sendable, Equatable {
         var headerFetchKind: HeaderFetchKind?
         var references: MessageIdList?
         var previewText: String?
+        let previewTextPresent = attributes.previewTextPresent
 
-        if let bodyMap {
+        if previewTextPresent {
+            previewText = attributes.previewText
+            items.insert(.previewText)
+        }
+
+        if let bodyMap, !previewTextPresent {
             if let headerPayload = headerPayload(from: bodyMap) {
                 headers = HeaderFieldParser.parse(headerPayload.data)
                 headerFetchKind = makeHeaderFetchKind(from: headerPayload)

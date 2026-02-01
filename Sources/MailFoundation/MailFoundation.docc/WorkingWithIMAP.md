@@ -149,6 +149,27 @@ for summary in summaries {
 }
 ```
 
+### Preview Text
+
+Fetch message preview snippets using the IMAP PREVIEW extension when available,
+falling back to a BODY.PEEK[TEXT] preview when it isn't:
+
+```swift
+let request = FetchRequest(items: [.envelope, .previewText])
+let summaries = try inbox.fetchSummaries(range: 1...50, request: request)
+
+for summary in summaries {
+    print(summary.previewText ?? "")
+}
+```
+
+To request lazy previews (PREVIEW (LAZY)) when supported by the server:
+
+```swift
+let request = FetchRequest(items: [.previewText], previewOptions: .lazy)
+let summaries = try inbox.fetchSummaries(range: 1...50, request: request)
+```
+
 ### Fetch by UID
 
 ```swift

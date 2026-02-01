@@ -1506,8 +1506,10 @@ public actor AsyncImapSession {
         maxEmptyReads: Int = 10
     ) async throws -> [MessageSummary] {
         try await ensureSelected()
-        let needsBodies = request.items.contains(.headers) || request.items.contains(.references) || request.items.contains(.previewText)
-        let itemList = request.items.contains(.previewText)
+        let previewSupported = await capabilities?.supports("PREVIEW") ?? false
+        let previewViaBody = request.items.contains(.previewText) && !previewSupported
+        let needsBodies = request.items.contains(.headers) || request.items.contains(.references) || previewViaBody
+        let itemList = previewViaBody
             ? request.imapItemList(previewFallback: ImapFetchPartial(start: 0, length: previewLength))
             : request.imapItemList
         return try await fetchSummariesWithQresync(set, items: itemList, parseBodies: needsBodies, maxEmptyReads: maxEmptyReads)
@@ -1717,8 +1719,10 @@ public actor AsyncImapSession {
         previewLength: Int = 512,
         maxEmptyReads: Int = 10
     ) async throws -> [MessageSummary] {
-        let needsBodies = request.items.contains(.headers) || request.items.contains(.references) || request.items.contains(.previewText)
-        let itemList = request.items.contains(.previewText)
+        let previewSupported = await capabilities?.supports("PREVIEW") ?? false
+        let previewViaBody = request.items.contains(.previewText) && !previewSupported
+        let needsBodies = request.items.contains(.headers) || request.items.contains(.references) || previewViaBody
+        let itemList = previewViaBody
             ? request.imapItemList(previewFallback: ImapFetchPartial(start: 0, length: previewLength))
             : request.imapItemList
         return try await uidFetchSummariesWithQresync(set, items: itemList, parseBodies: needsBodies, maxEmptyReads: maxEmptyReads)

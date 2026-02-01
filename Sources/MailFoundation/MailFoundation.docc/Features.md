@@ -51,7 +51,7 @@ MailFoundation supports the following IMAP protocol extensions:
 | **BINARY** | RFC 3516 | Binary content transfer |
 | **CATENATE** | RFC 4469 | Server-side message composition |
 | **CONVERT** | RFC 5259 | Content conversion |
-| **PREVIEW** | RFC 8970 | Message preview snippets |
+| **PREVIEW** | RFC 8970 | Message preview snippets (including PREVIEW (LAZY)) |
 | **SNIPPET** | - | Text snippets (draft) |
 
 ### Search and Sort

@@ -817,6 +817,29 @@ func imapFetchPreviewHtmlGmailFixture() {
     }
 }
 
+@Test("IMAP fetch preview fixture (gmail PREVIEW)")
+func imapFetchPreviewGmailPreviewFixture() {
+    let expected = [
+        "Planet Fitness https://view.email.planetfitness.com/?qs=9a098a031cabde68c0a4260051cd6fe473a2e997a53678ff26b4b199a711a9d2ad0536530d6f837c246b09f644d42016ecfb298f930b7af058e9e454b34f3d818ceb3052ae317b1ac4594aab28a2d788 View web ver",
+        "Don't miss our celebrity guest Monday evening",
+        "Planet Fitness https://view.email.planetfitness.com/?qs=9a098a031cabde68c0a4260051cd6fe473a2e997a53678ff26b4b199a711a9d2ad0536530d6f837c246b09f644d42016ecfb298f930b7af058e9e454b34f3d818ceb3052ae317b1ac4594aab28a2d788 View web ver",
+        "Planet Fitness https://view.email.planetfitness.com/?qs=9a098a031cabde68c0a4260051cd6fe473a2e997a53678ff26b4b199a711a9d2ad0536530d6f837c246b09f644d42016ecfb298f930b7af058e9e454b34f3d818ceb3052ae317b1ac4594aab28a2d788 View web ver",
+        "Don't miss our celebrity guest Monday evening",
+        "Planet Fitness https://view.email.planetfitness.com/?qs=9a098a031cabde68c0a4260051cd6fe473a2e997a53678ff26b4b199a711a9d2ad0536530d6f837c246b09f644d42016ecfb298f930b7af058e9e454b34f3d818ceb3052ae317b1ac4594aab28a2d788 View web ver"
+    ]
+
+    let fixture = loadFixture("gmail/fetch-preview.txt")
+    let messages = decodeImapLiteralMessages(fixture)
+    #expect(messages.count == 7)
+
+    let summaries = messages.dropLast().compactMap { MessageSummary.build(message: $0, bodyMap: nil) }
+    #expect(summaries.count == expected.count)
+    for (summary, value) in zip(summaries, expected) {
+        #expect(summary.previewText == value)
+        #expect(summary.items.contains(.previewText))
+    }
+}
+
 @Test("Message summary Korean preview decoding (gmail)")
 func messageSummaryKoreanPreviewDecoding() {
     let expected = "서기 250년경 고분 시대가 시작되면서 고분이라고 불리는 거대한 무덤이 건설된 것은 보다 집약적인 농업과 철기 기술의 도입에 힘입어 강력한 전사 엘리트의 출현을 나타냅니다. 일본은 철과 기타 물품의 공급을 확보하기 위해 남한의 연안 지배 집단과 집중적인 접촉을 벌이면서 중국에 사신을 파견하면서 대륙 본토와의 접촉이 증가했습니다(238, 243, 247). 4세기 동안 지속된 한반도의 한국 세력과"
@@ -1541,6 +1564,11 @@ func imapCapabilitiesParsing() {
     let bracketed = "* OK [CAPABILITY IMAP4rev1 STARTTLS] Ready"
     let bracketedCaps = ImapCapabilities.parse(from: bracketed)
     #expect(bracketedCaps?.supports("STARTTLS") == true)
+
+    let previewFixture = loadFixture("gmail/authenticate+preview.txt")
+    let previewLine = previewFixture.components(separatedBy: "\r\n").first ?? ""
+    let previewCaps = ImapCapabilities.parse(from: previewLine)
+    #expect(previewCaps?.supports("PREVIEW") == true)
 }
 
 @Test("IMAP response parsers")
