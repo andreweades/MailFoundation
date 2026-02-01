@@ -299,6 +299,18 @@ public struct MessageSummary: Sendable, Equatable {
         self = summary
     }
 
+    /// Creates a message summary from an IMAP literal message.
+    ///
+    /// This initializer parses the FETCH response and extracts all available
+    /// message attributes, including literal-based values when present.
+    ///
+    /// - Parameter message: The IMAP literal message to parse.
+    /// - Returns: A new message summary, or `nil` if the response cannot be parsed.
+    public init?(message: ImapLiteralMessage) {
+        guard let summary = MessageSummary.build(message: message, bodyMap: nil) else { return nil }
+        self = summary
+    }
+
     /// Builds a message summary from an IMAP FETCH response with optional body data.
     ///
     /// This method parses the FETCH response and extracts all available message
@@ -311,6 +323,81 @@ public struct MessageSummary: Sendable, Equatable {
     /// - Returns: A new message summary, or `nil` if the response cannot be parsed.
     public static func build(fetch: ImapFetchResponse, bodyMap: ImapFetchBodyMap?) -> MessageSummary? {
         guard let attributes = ImapFetchAttributes.parse(fetch) else { return nil }
+
+        var items: MessageSummaryItems = []
+
+        if !attributes.flags.isEmpty { items.insert(.flags) }
+        if let uid = attributes.uid, uid > 0 { items.insert(.uniqueId) }
+        if attributes.internalDate != nil { items.insert(.internalDate) }
+        if attributes.size != nil { items.insert(.size) }
+        if attributes.modSeq != nil { items.insert(.modSeq) }
+        if attributes.envelopeRaw != nil { items.insert(.envelope) }
+        if attributes.bodyStructure != nil { items.insert(.bodyStructure) }
+        if attributes.body != nil { items.insert(.body) }
+
+        let parsedFlags = MessageFlags.parse(attributes.flags)
+        let uniqueId = attributes.uid.flatMap { $0 > 0 ? UniqueId(id: $0) : nil }
+        let bodyStructure = attributes.parsedBodyStructure()
+
+        var headers: [String: String] = [:]
+        var headerFetchKind: HeaderFetchKind?
+        var references: MessageIdList?
+        var previewText: String?
+
+        if let bodyMap {
+            if let headerPayload = headerPayload(from: bodyMap) {
+                headers = HeaderFieldParser.parse(headerPayload.data)
+                headerFetchKind = makeHeaderFetchKind(from: headerPayload)
+                if !headers.isEmpty { items.insert(.headers) }
+                if let value = headers["REFERENCES"], let parsed = MessageIdList.parse(value) {
+                    references = parsed
+                    items.insert(.references)
+                } else if let value = headers["IN-REPLY-TO"], let parsed = MessageIdList.parse(value) {
+                    references = parsed
+                    items.insert(.references)
+                }
+            }
+            if let previewPayload = previewPayload(from: bodyMap, bodyStructure: bodyStructure) {
+                let contentType = previewContentType(for: previewPayload, bodyStructure: bodyStructure, headers: headers)
+                previewText = decodePreviewText(previewPayload.data, contentType: contentType)
+                if let previewText, !previewText.isEmpty {
+                    items.insert(.previewText)
+                }
+            }
+        }
+
+        return MessageSummary(
+            sequence: fetch.sequence,
+            items: items,
+            uniqueId: uniqueId,
+            flags: parsedFlags.flags,
+            keywords: parsedFlags.keywords,
+            internalDate: attributes.internalDate,
+            size: attributes.size,
+            modSeq: attributes.modSeq,
+            envelope: attributes.parsedImapEnvelope(),
+            bodyStructure: bodyStructure,
+            body: attributes.body.flatMap(ImapBodyStructure.parse),
+            headers: headers,
+            headerFetchKind: headerFetchKind,
+            references: references,
+            previewText: previewText
+        )
+    }
+
+    /// Builds a message summary from an IMAP literal message with optional body data.
+    ///
+    /// This method parses the FETCH response and extracts all available message
+    /// attributes, optionally using the body map to extract headers, references,
+    /// and preview text. Literal values are substituted when available.
+    ///
+    /// - Parameters:
+    ///   - message: The IMAP literal message to parse.
+    ///   - bodyMap: An optional map of body section payloads for extracting additional data.
+    /// - Returns: A new message summary, or `nil` if the response cannot be parsed.
+    public static func build(message: ImapLiteralMessage, bodyMap: ImapFetchBodyMap?) -> MessageSummary? {
+        guard let fetch = ImapFetchResponse.parse(message.line) else { return nil }
+        guard let attributes = ImapFetchAttributes.parse(message) else { return nil }
 
         var items: MessageSummaryItems = []
 

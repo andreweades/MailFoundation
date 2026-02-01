@@ -57,4 +57,19 @@ public struct ImapFlagChange: Sendable, Equatable {
         guard let fetch = ImapFetchResponse.parse(line) else { return nil }
         return parse(fetch)
     }
+
+    /// Parses a flag change from a literal FETCH response message.
+    ///
+    /// - Parameter message: The literal message to parse.
+    /// - Returns: The parsed flag change, or `nil` if parsing fails.
+    public static func parse(_ message: ImapLiteralMessage) -> ImapFlagChange? {
+        guard let fetch = ImapFetchResponse.parse(message.line) else { return nil }
+        guard let attributes = ImapFetchAttributes.parse(message) else { return nil }
+        return ImapFlagChange(
+            sequence: fetch.sequence,
+            uid: attributes.uid,
+            flags: attributes.flags,
+            modSeq: attributes.modSeq
+        )
+    }
 }

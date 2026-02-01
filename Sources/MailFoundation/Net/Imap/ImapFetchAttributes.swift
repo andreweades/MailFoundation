@@ -135,29 +135,87 @@ public struct ImapFetchAttributes: Sendable, Equatable {
         parsePayload(fetch.payload)
     }
 
+    /// Parses attributes from a FETCH response message that may include literals.
+    ///
+    /// - Parameter message: The literal message to parse.
+    /// - Returns: The parsed attributes, or `nil` if parsing fails.
+    public static func parse(_ message: ImapLiteralMessage) -> ImapFetchAttributes? {
+        var reader = ImapLineTokenReader(line: message.line, literals: message.literals)
+        guard let token = reader.readToken(), token.type == .asterisk else { return nil }
+        guard reader.readNumber() != nil else { return nil }
+        guard reader.readCaseInsensitiveAtom("FETCH") else { return nil }
+        guard let open = reader.readToken(), open.type == .openParen else { return nil }
+        return parseAttributeList(reader: &reader)
+    }
+
     /// Parses attributes from a FETCH response payload string.
     ///
-    /// - Parameter payload: The payload string to parse.
+    /// - Parameters:
+    ///   - payload: The payload string to parse.
+    ///   - literals: Optional literal values (in order) referenced by `{n}` markers.
     /// - Returns: The parsed attributes, or `nil` if parsing fails.
-    public static func parsePayload(_ payload: String) -> ImapFetchAttributes? {
-        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("("), trimmed.hasSuffix(")") else {
-            return nil
+    public static func parsePayload(_ payload: String, literals: [[UInt8]]? = nil) -> ImapFetchAttributes? {
+        var reader = ImapLineTokenReader(line: payload, literals: literals ?? [])
+        guard let token = reader.readToken(), token.type == .openParen else { return nil }
+        return parseAttributeList(reader: &reader)
+    }
+
+    private static func parseAttributeList(reader: inout ImapLineTokenReader) -> ImapFetchAttributes? {
+        var flags: [String] = []
+        var uid: UInt32?
+        var size: Int?
+        var internalDate: String?
+        var modSeq: UInt64?
+        var envelopeRaw: String?
+        var bodyStructure: String?
+        var body: String?
+
+        while let token = reader.peekToken() {
+            if token.type == .closeParen {
+                _ = reader.readToken()
+                break
+            }
+            guard let nameToken = reader.readToken(), nameToken.type == .atom, let name = nameToken.stringValue else {
+                return nil
+            }
+            let upper = name.uppercased()
+            switch upper {
+            case "FLAGS":
+                flags = readFlags(reader: &reader)
+            case "UID":
+                if let value = reader.readNumber() {
+                    uid = UInt32(value)
+                }
+            case "RFC822.SIZE":
+                size = reader.readNumber()
+            case "INTERNALDATE":
+                internalDate = reader.readNString()
+            case "MODSEQ":
+                modSeq = readModSeq(reader: &reader)
+            case "ENVELOPE":
+                envelopeRaw = readStructuredValue(reader: &reader, materializeLiterals: true)
+            case "BODYSTRUCTURE":
+                bodyStructure = readStructuredValue(reader: &reader, materializeLiterals: true)
+            case "BODY", "BODY.PEEK":
+                if let peek = reader.peekToken(), peek.type == .openBracket {
+                    _ = reader.readBracketedContent(materializeLiterals: true)
+                    if let partialToken = reader.peekToken(),
+                       partialToken.type == .atom,
+                       let partialValue = partialToken.stringValue,
+                       partialValue.hasPrefix("<"),
+                       partialValue.hasSuffix(">") {
+                        _ = reader.readToken()
+                    }
+                    _ = reader.readToken()
+                } else if upper == "BODY" {
+                    body = readStructuredValue(reader: &reader, materializeLiterals: true)
+                } else {
+                    reader.skipValue()
+                }
+            default:
+                reader.skipValue()
+            }
         }
-
-        let contentStart = trimmed.index(after: trimmed.startIndex)
-        let contentEnd = trimmed.index(before: trimmed.endIndex)
-        let content = String(trimmed[contentStart..<contentEnd])
-        let attributes = parseAttributes(content)
-
-        let flags = parseFlags(attributes["FLAGS"])
-        let uid = parseUInt32(attributes["UID"])
-        let size = parseInt(attributes["RFC822.SIZE"])
-        let internalDate = attributes["INTERNALDATE"]
-        let modSeq = parseUInt64(attributes["MODSEQ"])
-        let envelopeRaw = attributes["ENVELOPE"]
-        let bodyStructure = attributes["BODYSTRUCTURE"]
-        let body = attributes["BODY"]
 
         return ImapFetchAttributes(
             flags: flags,
@@ -192,8 +250,22 @@ public struct ImapFetchAttributes: Sendable, Equatable {
     /// }
     /// ```
     public func parsedImapEnvelope() -> ImapEnvelope? {
-        guard let envelopeRaw else { return nil }
-        return ImapEnvelope.parse(envelopeRaw)
+        guard let envelopeRaw else {
+            debugLog("[parsedImapEnvelope] envelopeRaw is nil")
+            return nil
+        }
+        debugLog("[parsedImapEnvelope] envelopeRaw='\(envelopeRaw.prefix(80))...'")
+        let result = ImapEnvelope.parse(envelopeRaw)
+        if result == nil {
+            debugLog("[parsedImapEnvelope] ImapEnvelope.parse returned nil!")
+        } else {
+            debugLog("[parsedImapEnvelope] parsed successfully, subject='\(result?.subject ?? "nil")'")
+        }
+        return result
+    }
+
+    private func debugLog(_ message: String) {
+        MailFoundationLogging.debug(.imapFetch, message)
     }
 
     /// Parses the envelope using a cache for performance.
@@ -226,140 +298,35 @@ public struct ImapFetchAttributes: Sendable, Equatable {
         return ImapBodyStructure.parse(bodyStructure)
     }
 
-    private static func parseAttributes(_ content: String) -> [String: String] {
-        var attributes: [String: String] = [:]
-        var index = content.startIndex
-
-        func skipWhitespace() {
-            while index < content.endIndex, content[index].isWhitespace {
-                index = content.index(after: index)
+    private static func readFlags(reader: inout ImapLineTokenReader) -> [String] {
+        guard let token = reader.readToken(), token.type == .openParen else { return [] }
+        var flags: [String] = []
+        while let valueToken = reader.readToken() {
+            if valueToken.type == .closeParen {
+                break
+            }
+            if let value = valueToken.stringValue {
+                flags.append(value)
             }
         }
+        return flags
+    }
 
-        func readAtom() -> String? {
-            skipWhitespace()
-            guard index < content.endIndex else { return nil }
-            let start = index
-            while index < content.endIndex {
-                let ch = content[index]
-                if ch.isWhitespace || ch == "(" || ch == ")" || ch == "\"" {
-                    break
-                }
-                index = content.index(after: index)
-            }
-            guard start < index else { return nil }
-            return String(content[start..<index])
+    private static func readModSeq(reader: inout ImapLineTokenReader) -> UInt64? {
+        guard let token = reader.readToken(), token.type == .openParen else { return nil }
+        let value = reader.readNumber()
+        _ = reader.readToken()
+        if let value {
+            return UInt64(value)
         }
+        return nil
+    }
 
-        func readQuoted() -> String? {
-            guard index < content.endIndex, content[index] == "\"" else { return nil }
-            index = content.index(after: index)
-            var result = ""
-            var escape = false
-            while index < content.endIndex {
-                let ch = content[index]
-                if escape {
-                    result.append(ch)
-                    escape = false
-                } else if ch == "\\" {
-                    escape = true
-                } else if ch == "\"" {
-                    index = content.index(after: index)
-                    return result
-                } else {
-                    result.append(ch)
-                }
-                index = content.index(after: index)
-            }
+    private static func readStructuredValue(reader: inout ImapLineTokenReader, materializeLiterals: Bool) -> String? {
+        guard let value = reader.readValueString(materializeLiterals: materializeLiterals) else { return nil }
+        if value.uppercased() == "NIL" {
             return nil
         }
-
-        func readParenthesized() -> String? {
-            guard index < content.endIndex, content[index] == "(" else { return nil }
-            var depth = 0
-            var inQuote = false
-            var escape = false
-            let start = index
-            while index < content.endIndex {
-                let ch = content[index]
-                if inQuote {
-                    if escape {
-                        escape = false
-                    } else if ch == "\\" {
-                        escape = true
-                    } else if ch == "\"" {
-                        inQuote = false
-                    }
-                } else {
-                    if ch == "\"" {
-                        inQuote = true
-                    } else if ch == "(" {
-                        depth += 1
-                    } else if ch == ")" {
-                        depth -= 1
-                        if depth == 0 {
-                            let end = content.index(after: index)
-                            index = end
-                            return String(content[start..<end])
-                        }
-                    }
-                }
-                index = content.index(after: index)
-            }
-            return nil
-        }
-
-        func readValue() -> String? {
-            skipWhitespace()
-            guard index < content.endIndex else { return nil }
-            let ch = content[index]
-            if ch == "\"" {
-                return readQuoted()
-            }
-            if ch == "(" {
-                return readParenthesized()
-            }
-            return readAtom()
-        }
-
-        while let name = readAtom() {
-            let value = readValue()
-            if let value {
-                attributes[name.uppercased()] = value
-            }
-        }
-
-        return attributes
-    }
-
-    private static func parseFlags(_ value: String?) -> [String] {
-        guard let value else { return [] }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("("), trimmed.hasSuffix(")") else { return [] }
-        let start = trimmed.index(after: trimmed.startIndex)
-        let end = trimmed.index(before: trimmed.endIndex)
-        let inner = trimmed[start..<end]
-        return inner.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-    }
-
-    private static func parseInt(_ value: String?) -> Int? {
-        guard let value else { return nil }
-        return Int(value)
-    }
-
-    private static func parseUInt32(_ value: String?) -> UInt32? {
-        guard let value else { return nil }
-        return UInt32(value)
-    }
-
-    private static func parseUInt64(_ value: String?) -> UInt64? {
-        guard let value else { return nil }
-        var trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix("("), trimmed.hasSuffix(")") {
-            trimmed.removeFirst()
-            trimmed.removeLast()
-            trimmed = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return UInt64(trimmed)
+        return value
     }
 }

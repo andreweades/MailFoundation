@@ -46,10 +46,10 @@ public actor ImapQresyncStream {
             if let modSeq = ImapModSeqResponse.parse(message.line) {
                 state.apply(modSeq: modSeq)
             }
-            if let status = ImapStatusResponse.parse(message.line) {
+            if let status = ImapStatusResponse.parse(message) {
                 state.apply(status: status)
             }
-            if let listStatus = ImapListStatusResponse.parse(message.line) {
+            if let listStatus = ImapListStatusResponse.parse(message) {
                 state.apply(listStatus: listStatus)
             }
             if let event = ImapQresyncEvent.parse(message, validity: state.uidValidity ?? 0) {

@@ -29,89 +29,97 @@
 //
 
 public struct ImapLiteralMessage: Sendable, Equatable {
+    /// The response line with any literal markers preserved.
     public let line: String
+    /// The parsed response, if available.
     public let response: ImapResponse?
+    /// Convenience accessor for a single literal payload (if exactly one literal was present).
     public let literal: [UInt8]?
+    /// All literal payloads, in the order they appeared in the response line.
+    public let literals: [[UInt8]]
+
+    public init(line: String, response: ImapResponse?, literal: [UInt8]?, literals: [[UInt8]] = []) {
+        self.line = line
+        self.response = response
+        self.literal = literal
+        if literals.isEmpty, let literal {
+            self.literals = [literal]
+        } else {
+            self.literals = literals
+        }
+    }
 }
 
+import Foundation
+
 public struct ImapLiteralDecoder: Sendable {
-    private var lineBuffer = LineBuffer()
-    private var pendingLine: String?
+    private var tokenStream = ImapTokenStream()
+    private var pendingLineBytes: [UInt8] = []
     private var pendingLiteralBytes: Int = 0
-    private var pendingLiteral: [UInt8] = []
+    private var pendingLiteralBuffer: [UInt8] = []
+    private var pendingLiterals: [[UInt8]] = []
 
     public init() {}
 
+    /// Returns true if the decoder is currently accumulating a literal or has partial data.
+    /// This can be used to distinguish between "no data available" and "still waiting for more data".
+    public var hasPendingData: Bool {
+        tokenStream.hasBufferedData || pendingLiteralBytes > 0 || !pendingLineBytes.isEmpty
+    }
+
     public mutating func append(_ bytes: [UInt8]) -> [ImapLiteralMessage] {
-        var remaining = bytes[...]
+        tokenStream.append(bytes)
         var messages: [ImapLiteralMessage] = []
 
-        while !remaining.isEmpty {
+        while true {
             if pendingLiteralBytes > 0 {
-                let take = min(pendingLiteralBytes, remaining.count)
-                pendingLiteral.append(contentsOf: remaining.prefix(take))
-                pendingLiteralBytes -= take
-                remaining = remaining.dropFirst(take)
-
-                if pendingLiteralBytes == 0, let line = pendingLine {
-                    messages.append(ImapLiteralMessage(line: line, response: ImapResponse.parse(line), literal: pendingLiteral))
-                    pendingLine = nil
-                    pendingLiteral.removeAll(keepingCapacity: true)
+                let chunk = tokenStream.readLiteralChunk(max: pendingLiteralBytes)
+                if chunk.isEmpty {
+                    break
+                }
+                pendingLiteralBuffer.append(contentsOf: chunk)
+                pendingLiteralBytes -= chunk.count
+                if pendingLiteralBytes == 0 {
+                    pendingLiterals.append(pendingLiteralBuffer)
+                    pendingLiteralBuffer.removeAll(keepingCapacity: true)
                 }
                 continue
             }
 
-            let lines = lineBuffer.append(remaining)
-            remaining = []
-            for line in lines {
-                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let literalLength = parseLiteralLength(from: trimmedLine) {
-                    if literalLength == 0 {
-                        messages.append(ImapLiteralMessage(line: trimmedLine, response: ImapResponse.parse(trimmedLine), literal: []))
-                    } else {
-                        pendingLine = trimmedLine
-                        pendingLiteralBytes = literalLength
-                        pendingLiteral.removeAll(keepingCapacity: true)
-                    }
+            guard let scan = tokenStream.readToken() else {
+                break
+            }
+
+            if scan.token.type == .eoln {
+                let line = String(decoding: pendingLineBytes, as: UTF8.self)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !line.isEmpty {
+                    let literals = pendingLiterals
+                    let literal = literals.count == 1 ? literals[0] : nil
+                    messages.append(ImapLiteralMessage(
+                        line: line,
+                        response: ImapResponse.parse(line),
+                        literal: literal,
+                        literals: literals
+                    ))
+                }
+                pendingLineBytes.removeAll(keepingCapacity: true)
+                pendingLiterals.removeAll(keepingCapacity: true)
+                continue
+            }
+
+            pendingLineBytes.append(contentsOf: scan.consumed)
+
+            if scan.token.type == .literal, let length = scan.token.literalLength {
+                if length == 0 {
+                    pendingLiterals.append([])
                 } else {
-                    messages.append(ImapLiteralMessage(line: trimmedLine, response: ImapResponse.parse(trimmedLine), literal: nil))
+                    pendingLiteralBytes = length
+                    pendingLiteralBuffer.removeAll(keepingCapacity: true)
                 }
             }
         }
 
         return messages
-    }
-
-    private func parseLiteralLength(from line: String) -> Int? {
-        let bytes = Array(line.utf8)
-        guard let last = bytes.last, last == 0x7D else { // '}'
-            return nil
-        }
-
-        var index = bytes.count - 2
-        var multiplier = 1
-        var value = 0
-        var sawDigit = false
-
-        while index >= 0 {
-            let byte = bytes[index]
-            if byte == 0x7B { // '{'
-                return sawDigit ? value : nil
-            }
-            if byte == 0x2B { // '+'
-                index -= 1
-                continue
-            }
-            if byte >= 0x30, byte <= 0x39 {
-                sawDigit = true
-                value += Int(byte - 0x30) * multiplier
-                multiplier *= 10
-                index -= 1
-                continue
-            }
-            return nil
-        }
-
-        return nil
     }
 }

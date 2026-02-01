@@ -33,31 +33,59 @@ public struct ImapStatusResponse: Sendable, Equatable {
     public let items: [String: Int]
 
     public static func parse(_ line: String) -> ImapStatusResponse? {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.uppercased().hasPrefix("* STATUS ") else {
-            return nil
-        }
+        parse(line, literals: [])
+    }
 
-        let restStart = trimmed.index(trimmed.startIndex, offsetBy: 9)
-        let rest = trimmed[restStart...]
-        guard let openParen = rest.firstIndex(of: "("), let closeParen = rest.firstIndex(of: ")"), closeParen > openParen else {
-            return nil
-        }
+    /// Parses a STATUS response from a literal-aware message.
+    ///
+    /// - Parameter message: The literal response message.
+    /// - Returns: The parsed status response, or `nil` if parsing fails.
+    public static func parse(_ message: ImapLiteralMessage) -> ImapStatusResponse? {
+        parse(message.line, literals: message.literals)
+    }
 
-        let mailboxPart = rest[..<openParen].trimmingCharacters(in: .whitespaces)
-        let itemsPart = rest[rest.index(after: openParen)..<closeParen]
-        let tokens = itemsPart.split(separator: " ", omittingEmptySubsequences: true)
-        guard tokens.count >= 2 else { return nil }
+    private static func parse(_ line: String, literals: [[UInt8]]) -> ImapStatusResponse? {
+        var reader = ImapLineTokenReader(line: line, literals: literals)
+        guard let token = reader.readToken(), token.type == .asterisk else { return nil }
+        guard reader.readCaseInsensitiveAtom("STATUS") else { return nil }
+        guard let mailboxToken = reader.readToken() else { return nil }
+        guard let mailbox = readStringValue(token: mailboxToken, reader: &reader, allowNil: false) else { return nil }
+        guard let items = readStatusItems(reader: &reader) else { return nil }
+        return ImapStatusResponse(mailbox: mailbox, items: items)
+    }
 
+    private static func readStatusItems(reader: inout ImapLineTokenReader) -> [String: Int]? {
+        guard let token = reader.readToken(), token.type == .openParen else { return nil }
         var items: [String: Int] = [:]
-        var index = 0
-        while index + 1 < tokens.count {
-            let key = tokens[index].uppercased()
-            let value = Int(tokens[index + 1]) ?? 0
-            items[key] = value
-            index += 2
+        while let next = reader.peekToken() {
+            if next.type == .closeParen {
+                _ = reader.readToken()
+                break
+            }
+            guard let keyToken = reader.readToken(),
+                  let key = readStringValue(token: keyToken, reader: &reader, allowNil: false) else {
+                return nil
+            }
+            let value = reader.readNumber() ?? 0
+            items[key.uppercased()] = value
         }
+        return items
+    }
 
-        return ImapStatusResponse(mailbox: String(mailboxPart), items: items)
+    private static func readStringValue(
+        token: ImapToken,
+        reader: inout ImapLineTokenReader,
+        allowNil: Bool
+    ) -> String? {
+        switch token.type {
+        case .atom, .qString, .flag:
+            return token.stringValue
+        case .literal:
+            return reader.literalString(for: token)
+        case .nilValue:
+            return allowNil ? nil : nil
+        default:
+            return nil
+        }
     }
 }

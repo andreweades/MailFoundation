@@ -28,6 +28,8 @@
 // Async IMAP client backed by AsyncTransport.
 //
 
+import Foundation
+
 @available(macOS 10.15, iOS 13.0, *)
 public actor AsyncImapClient {
     private enum PendingCommand {
@@ -66,6 +68,12 @@ public actor AsyncImapClient {
 
     public var isDisconnected: Bool {
         state == .disconnected
+    }
+
+    /// Returns true if the decoder has pending data (partial message or literal in progress).
+    /// This can be used to distinguish between "no messages ready" and "still receiving data".
+    public var hasPendingData: Bool {
+        literalDecoder.hasPendingData
     }
 
     /// Sets the protocol logger for debugging.
@@ -195,12 +203,19 @@ public actor AsyncImapClient {
     public func nextMessages() async -> [ImapLiteralMessage] {
         let chunk = await queue.dequeue()
         guard let chunk else {
+            debugLog("[nextMessages] queue returned nil (finished)")
+            // Mark as disconnected so fetch loops can detect connection loss
+            state = .disconnected
             return []
         }
+        debugLog("[nextMessages] received chunk of \(chunk.count) bytes")
         protocolLogger.logServer(chunk, offset: 0, count: chunk.count)
         let messages = literalDecoder.append(chunk)
-        for message in messages {
+        debugLog("[nextMessages] literalDecoder returned \(messages.count) messages")
+        for (index, message) in messages.enumerated() {
+            debugLog("[nextMessages] message[\(index)]: line='\(message.line.prefix(80))...' suffix='...\(message.line.suffix(30))' len=\(message.line.count) hasResponse=\(message.response != nil)")
             if let response = message.response {
+                debugLog("[nextMessages] message[\(index)]: kind=\(response.kind) status=\(String(describing: response.status))")
                 handleResponse(response)
             }
             if let parsed = ImapCapabilities.parse(from: message.line) {
@@ -209,6 +224,10 @@ public actor AsyncImapClient {
             }
         }
         return messages
+    }
+
+    private func debugLog(_ message: String) {
+        MailFoundationLogging.debug(.imapClient, message)
     }
 
     public func waitForContinuation() async -> ImapResponse? {

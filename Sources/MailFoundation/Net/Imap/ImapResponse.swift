@@ -62,30 +62,27 @@ public struct ImapResponse: Sendable, Equatable {
             return ImapResponse(kind: .continuation, status: nil, text: String(message))
         }
 
-        let parts = trimmed.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
-        guard let first = parts.first else { return nil }
+        var reader = ImapLineTokenReader(line: trimmed)
+        guard let first = reader.readToken() else { return nil }
 
         let kind: ImapResponseKind
-        if first == "*" {
+        switch first.type {
+        case .asterisk:
             kind = .untagged
-        } else {
-            kind = .tagged(String(first))
+        case .atom:
+            guard let tag = first.stringValue else { return nil }
+            kind = .tagged(tag)
+        default:
+            return nil
         }
 
-        let statusIndex = first == "*" ? 1 : 1
-        guard parts.count > statusIndex else {
+        guard let statusToken = reader.readToken() else {
             return ImapResponse(kind: kind, status: nil, text: "")
         }
 
-        let statusToken = String(parts[statusIndex])
-        let status = ImapResponseStatus(rawValue: statusToken)
-        let text: String
-        if parts.count > statusIndex + 1 {
-            text = String(parts[statusIndex + 1])
-        } else {
-            text = ""
-        }
-
+        let statusValue = statusToken.stringValue ?? ""
+        let status = ImapResponseStatus(rawValue: statusValue)
+        let text = reader.remainingString(trimLeadingWhitespace: true)
         return ImapResponse(kind: kind, status: status, text: text)
     }
 }

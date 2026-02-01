@@ -124,7 +124,16 @@ public struct ImapCapabilities: Sendable, Equatable {
             return bracketed
         }
 
-        let tokens = line.split(separator: " ").map(String.init)
+        var reader = ImapLineTokenReader(line: line)
+        var tokens: [String] = []
+        while let token = reader.readToken() {
+            if let value = token.stringValue {
+                tokens.append(value)
+            } else if token.type == .asterisk {
+                tokens.append("*")
+            }
+        }
+
         guard let index = tokens.firstIndex(where: { $0.caseInsensitiveEquals("CAPABILITY") }) else {
             return nil
         }
@@ -134,19 +143,24 @@ public struct ImapCapabilities: Sendable, Equatable {
     }
 
     private static func parseBracketedCapabilities(from line: String) -> ImapCapabilities? {
-        guard let range = line.range(of: "[CAPABILITY", options: [.caseInsensitive]) else {
-            return nil
+        var reader = ImapLineTokenReader(line: line)
+        while let peek = reader.peekToken() {
+            if peek.type == .openBracket {
+                guard let inner = reader.readBracketedContent(materializeLiterals: false) else { return nil }
+                var innerReader = ImapLineTokenReader(line: inner)
+                guard innerReader.readCaseInsensitiveAtom("CAPABILITY") else { continue }
+                var tokens: [String] = []
+                while let token = innerReader.readToken() {
+                    if let value = token.stringValue {
+                        tokens.append(value)
+                    }
+                }
+                guard !tokens.isEmpty else { return nil }
+                return ImapCapabilities(tokens: tokens)
+            }
+            _ = reader.readToken()
         }
-
-        let after = line[range.upperBound...]
-        guard let end = after.firstIndex(of: "]") else {
-            return nil
-        }
-
-        let contents = after[..<end]
-        let tokens = contents.split(separator: " ").map(String.init)
-        guard !tokens.isEmpty else { return nil }
-        return ImapCapabilities(tokens: tokens)
+        return nil
     }
 }
 

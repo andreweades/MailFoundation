@@ -89,19 +89,19 @@ public enum ImapSelectedStateReducer {
             }
 
             if let fetch = ImapFetchResponse.parse(message.line) {
-                if let attrs = ImapFetchAttributes.parse(fetch) {
+                if let attrs = ImapFetchAttributes.parse(message) {
                     state.applyFetch(sequence: fetch.sequence, uid: attrs.uid, modSeq: attrs.modSeq)
                 }
-                if let change = ImapFlagChange.parse(fetch) {
+                if let change = ImapFlagChange.parse(message) {
                     flagChanges.append(change)
                 }
             }
 
-            if let status = ImapStatusResponse.parse(message.line), let mailbox, status.mailbox == mailbox {
+            if let status = ImapStatusResponse.parse(message), let mailbox, status.mailbox == mailbox {
                 state.apply(status: status)
             }
 
-            if let listStatus = ImapListStatusResponse.parse(message.line), let mailbox, listStatus.mailbox.name == mailbox {
+            if let listStatus = ImapListStatusResponse.parse(message), let mailbox, listStatus.mailbox.name == mailbox {
                 state.apply(listStatus: listStatus)
             }
 

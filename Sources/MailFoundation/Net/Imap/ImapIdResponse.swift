@@ -34,78 +34,47 @@ public struct ImapIdResponse: Sendable, Equatable {
     public let values: [String: String?]
 
     public static func parse(_ line: String) -> ImapIdResponse? {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.uppercased().hasPrefix("* ID") else { return nil }
-
-        let remainder = trimmed.dropFirst(4).trimmingCharacters(in: .whitespacesAndNewlines)
-        if remainder.uppercased().hasPrefix("NIL") {
+        var reader = ImapLineTokenReader(line: line)
+        guard let token = reader.readToken(), token.type == .asterisk else { return nil }
+        guard reader.readCaseInsensitiveAtom("ID") else { return nil }
+        guard let next = reader.readToken() else { return nil }
+        if next.type == .nilValue {
             return ImapIdResponse(values: [:])
         }
-        guard remainder.first == "(" else { return nil }
-        guard let end = remainder.lastIndex(of: ")") else { return nil }
-        let inner = remainder[remainder.index(after: remainder.startIndex)..<end]
-        let tokens = tokenize(String(inner))
-        guard !tokens.isEmpty else { return ImapIdResponse(values: [:]) }
+        guard next.type == .openParen else { return nil }
 
         var values: [String: String?] = [:]
-        var index = 0
-        while index + 1 < tokens.count {
-            let key = tokens[index]
-            let rawValue = tokens[index + 1]
-            let value = rawValue.caseInsensitiveCompare("NIL") == .orderedSame ? nil : rawValue
+        while let peek = reader.peekToken() {
+            if peek.type == .closeParen {
+                _ = reader.readToken()
+                break
+            }
+            guard let keyToken = reader.readToken(),
+                  let key = readStringValue(token: keyToken, reader: &reader, allowNil: false) else {
+                return nil
+            }
+            guard let valueToken = reader.readToken() else { return nil }
+            let value = readStringValue(token: valueToken, reader: &reader, allowNil: true)
             values[key] = value
-            index += 2
         }
+
         return ImapIdResponse(values: values)
     }
 
-    private static func tokenize(_ text: String) -> [String] {
-        var tokens: [String] = []
-        var index = text.startIndex
-
-        while index < text.endIndex {
-            let ch = text[index]
-            if ch.isWhitespace {
-                index = text.index(after: index)
-                continue
-            }
-            if ch == "\"" {
-                index = text.index(after: index)
-                var value = ""
-                while index < text.endIndex {
-                    let current = text[index]
-                    if current == "\\" {
-                        let next = text.index(after: index)
-                        if next < text.endIndex {
-                            value.append(text[next])
-                            index = text.index(after: next)
-                        } else {
-                            index = next
-                        }
-                        continue
-                    }
-                    if current == "\"" {
-                        index = text.index(after: index)
-                        break
-                    }
-                    value.append(current)
-                    index = text.index(after: index)
-                }
-                tokens.append(value)
-                continue
-            }
-
-            let start = index
-            while index < text.endIndex {
-                let current = text[index]
-                if current.isWhitespace {
-                    break
-                }
-                index = text.index(after: index)
-            }
-            tokens.append(String(text[start..<index]))
+    private static func readStringValue(
+        token: ImapToken,
+        reader: inout ImapLineTokenReader,
+        allowNil: Bool
+    ) -> String? {
+        switch token.type {
+        case .atom, .qString, .flag:
+            return token.stringValue
+        case .literal:
+            return reader.literalString(for: token)
+        case .nilValue:
+            return allowNil ? nil : nil
+        default:
+            return nil
         }
-
-        return tokens
     }
 }

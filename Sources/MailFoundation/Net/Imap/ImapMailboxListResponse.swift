@@ -51,95 +51,25 @@ public struct ImapMailboxListResponse: Sendable, Equatable {
     }
 
     public static func parse(_ line: String) -> ImapMailboxListResponse? {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("*") else { return nil }
-        var index = trimmed.index(after: trimmed.startIndex)
+        parse(line, literals: [])
+    }
 
-        func skipWhitespace() {
-            while index < trimmed.endIndex, trimmed[index].isWhitespace {
-                index = trimmed.index(after: index)
-            }
-        }
+    /// Parses a LIST or LSUB response from a literal-aware message.
+    ///
+    /// - Parameter message: The literal response message.
+    /// - Returns: The parsed mailbox list response, or `nil` if parsing fails.
+    public static func parse(_ message: ImapLiteralMessage) -> ImapMailboxListResponse? {
+        parse(message.line, literals: message.literals)
+    }
 
-        func readAtom() -> String? {
-            skipWhitespace()
-            guard index < trimmed.endIndex else { return nil }
-            let start = index
-            while index < trimmed.endIndex {
-                let ch = trimmed[index]
-                if ch.isWhitespace || ch == "(" || ch == ")" {
-                    break
-                }
-                index = trimmed.index(after: index)
-            }
-            guard start < index else { return nil }
-            return String(trimmed[start..<index])
-        }
-
-        func readQuoted() -> String? {
-            guard index < trimmed.endIndex, trimmed[index] == "\"" else { return nil }
-            index = trimmed.index(after: index)
-            var result = ""
-            var escape = false
-            while index < trimmed.endIndex {
-                let ch = trimmed[index]
-                if escape {
-                    result.append(ch)
-                    escape = false
-                } else if ch == "\\" {
-                    escape = true
-                } else if ch == "\"" {
-                    index = trimmed.index(after: index)
-                    return result
-                } else {
-                    result.append(ch)
-                }
-                index = trimmed.index(after: index)
-            }
+    private static func parse(_ line: String, literals: [[UInt8]]) -> ImapMailboxListResponse? {
+        var reader = ImapLineTokenReader(line: line, literals: literals)
+        guard let token = reader.readToken(), token.type == .asterisk else { return nil }
+        guard let commandToken = reader.readToken(),
+              commandToken.type == .atom,
+              let command = commandToken.stringValue else {
             return nil
         }
-
-        func readStringOrNil() -> String?? {
-            skipWhitespace()
-            guard index < trimmed.endIndex else { return nil }
-            if trimmed[index] == "\"" {
-                if let value = readQuoted() {
-                    return .some(value)
-                }
-                return nil
-            }
-            guard let atom = readAtom() else { return nil }
-            if atom.uppercased() == "NIL" {
-                return .some(nil)
-            }
-            return .some(atom)
-        }
-
-        func readAttributes() -> [String]? {
-            skipWhitespace()
-            guard index < trimmed.endIndex, trimmed[index] == "(" else { return nil }
-            index = trimmed.index(after: index)
-            var result: [String] = []
-            while index < trimmed.endIndex {
-                skipWhitespace()
-                if index < trimmed.endIndex, trimmed[index] == ")" {
-                    index = trimmed.index(after: index)
-                    return result
-                }
-                if let value = readAtom() {
-                    result.append(value)
-                    continue
-                }
-                if let quoted = readQuoted() {
-                    result.append(quoted)
-                    continue
-                }
-                return nil
-            }
-            return nil
-        }
-
-        guard let command = readAtom() else { return nil }
         let upper = command.uppercased()
         let kind: ImapMailboxListKind
         if upper == "LIST" {
@@ -150,11 +80,45 @@ public struct ImapMailboxListResponse: Sendable, Equatable {
             return nil
         }
 
-        guard let attributes = readAttributes() else { return nil }
-        guard let delimiterValue = readStringOrNil() else { return nil }
-        guard let mailboxValue = readStringOrNil() else { return nil }
-        guard let name = mailboxValue else { return nil }
+        guard let attributes = readAttributes(reader: &reader) else { return nil }
+        guard let delimiterToken = reader.readToken() else { return nil }
+        let delimiter = readStringValue(token: delimiterToken, reader: &reader, allowNil: true)
+        guard let mailboxToken = reader.readToken() else { return nil }
+        guard let name = readStringValue(token: mailboxToken, reader: &reader, allowNil: false) else { return nil }
 
-        return ImapMailboxListResponse(kind: kind, attributes: attributes, delimiter: delimiterValue, name: name)
+        return ImapMailboxListResponse(kind: kind, attributes: attributes, delimiter: delimiter, name: name)
+    }
+
+    private static func readAttributes(reader: inout ImapLineTokenReader) -> [String]? {
+        guard let token = reader.readToken(), token.type == .openParen else { return nil }
+        var result: [String] = []
+        while let next = reader.readToken() {
+            if next.type == .closeParen {
+                break
+            }
+            if let value = next.stringValue {
+                result.append(value)
+            } else if next.type == .literal, let value = reader.literalString(for: next) {
+                result.append(value)
+            }
+        }
+        return result
+    }
+
+    private static func readStringValue(
+        token: ImapToken,
+        reader: inout ImapLineTokenReader,
+        allowNil: Bool
+    ) -> String? {
+        switch token.type {
+        case .atom, .qString, .flag:
+            return token.stringValue
+        case .literal:
+            return reader.literalString(for: token)
+        case .nilValue:
+            return allowNil ? nil : nil
+        default:
+            return nil
+        }
     }
 }

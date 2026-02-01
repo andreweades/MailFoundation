@@ -729,7 +729,7 @@ public final class ImapSession {
             }
             for message in messages {
                 _ = ingestSelectedState(from: message)
-                if let list = ImapMailboxListResponse.parse(message.line) {
+                if let list = ImapMailboxListResponse.parse(message) {
                     responses.append(list)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -762,7 +762,7 @@ public final class ImapSession {
             }
             for message in messages {
                 _ = ingestSelectedState(from: message)
-                if let list = ImapMailboxListResponse.parse(message.line) {
+                if let list = ImapMailboxListResponse.parse(message) {
                     responses.append(list)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -790,7 +790,7 @@ public final class ImapSession {
             }
             for message in messages {
                 _ = ingestSelectedState(from: message)
-                if let listStatus = ImapListStatusResponse.parse(message.line) {
+                if let listStatus = ImapListStatusResponse.parse(message) {
                     responses.append(listStatus)
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -1161,12 +1161,12 @@ public final class ImapSession {
                     guard response.isOk else {
                         throw SessionError.imapError(status: response.status, text: response.text)
                     }
-                    let fetches = messages.compactMap { ImapFetchResponse.parse($0.line) }
-                    let maps = parseBodies ? ImapFetchBodyParser.parseMaps(messages) : []
-                    let mapBySequence = Dictionary(uniqueKeysWithValues: maps.map { ($0.sequence, $0) })
-                    return fetches.compactMap { fetch in
-                        MessageSummary.build(fetch: fetch, bodyMap: mapBySequence[fetch.sequence])
-                    }
+                        let maps = parseBodies ? ImapFetchBodyParser.parseMaps(messages) : []
+                        let mapBySequence = Dictionary(uniqueKeysWithValues: maps.map { ($0.sequence, $0) })
+                        return messages.compactMap { message in
+                            guard let fetch = ImapFetchResponse.parse(message.line) else { return nil }
+                            return MessageSummary.build(message: message, bodyMap: mapBySequence[fetch.sequence])
+                        }
                 }
             }
         }
@@ -1288,12 +1288,12 @@ public final class ImapSession {
                     guard response.isOk else {
                         throw SessionError.imapError(status: response.status, text: response.text)
                     }
-                    let fetches = messages.compactMap { ImapFetchResponse.parse($0.line) }
-                    let maps = parseBodies ? ImapFetchBodyParser.parseMaps(messages) : []
-                    let mapBySequence = Dictionary(uniqueKeysWithValues: maps.map { ($0.sequence, $0) })
-                    return fetches.compactMap { fetch in
-                        MessageSummary.build(fetch: fetch, bodyMap: mapBySequence[fetch.sequence])
-                    }
+                        let maps = parseBodies ? ImapFetchBodyParser.parseMaps(messages) : []
+                        let mapBySequence = Dictionary(uniqueKeysWithValues: maps.map { ($0.sequence, $0) })
+                        return messages.compactMap { message in
+                            guard let fetch = ImapFetchResponse.parse(message.line) else { return nil }
+                            return MessageSummary.build(message: message, bodyMap: mapBySequence[fetch.sequence])
+                        }
                 }
             }
         }
@@ -1370,7 +1370,7 @@ public final class ImapSession {
 
             for message in messages {
                 _ = ingestSelectedState(from: message)
-                if let status = ImapStatusResponse.parse(message.line) {
+                if let status = ImapStatusResponse.parse(message) {
                     result = status
                 }
                 if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -1531,13 +1531,13 @@ public final class ImapSession {
             state.apply(modSeq: modSeq)
         }
         if let fetch = ImapFetchResponse.parse(message.line),
-           let attrs = ImapFetchAttributes.parse(fetch) {
+           let attrs = ImapFetchAttributes.parse(message) {
             state.applyFetch(sequence: fetch.sequence, uid: attrs.uid, modSeq: attrs.modSeq)
         }
-        if let status = ImapStatusResponse.parse(message.line), status.mailbox == mailbox {
+        if let status = ImapStatusResponse.parse(message), status.mailbox == mailbox {
             state.apply(status: status)
         }
-        if let listStatus = ImapListStatusResponse.parse(message.line), listStatus.mailbox.name == mailbox {
+        if let listStatus = ImapListStatusResponse.parse(message), listStatus.mailbox.name == mailbox {
             state.apply(listStatus: listStatus)
         }
         if let event = ImapQresyncEvent.parse(message, validity: state.uidValidity ?? 0) {
@@ -1558,15 +1558,15 @@ public final class ImapSession {
             selectedState.apply(modSeq: modSeq)
         }
         if let fetch = ImapFetchResponse.parse(message.line),
-           let attrs = ImapFetchAttributes.parse(fetch) {
+           let attrs = ImapFetchAttributes.parse(message) {
             selectedState.applyFetch(sequence: fetch.sequence, uid: attrs.uid, modSeq: attrs.modSeq)
         }
-        if let status = ImapStatusResponse.parse(message.line),
+        if let status = ImapStatusResponse.parse(message),
            let selectedMailbox,
            status.mailbox == selectedMailbox {
             selectedState.apply(status: status)
         }
-        if let listStatus = ImapListStatusResponse.parse(message.line),
+        if let listStatus = ImapListStatusResponse.parse(message),
            let selectedMailbox,
            listStatus.mailbox.name == selectedMailbox {
             selectedState.apply(listStatus: listStatus)

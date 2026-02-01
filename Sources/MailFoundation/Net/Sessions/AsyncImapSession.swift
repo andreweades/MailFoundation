@@ -28,6 +28,8 @@
 // Higher-level async IMAP session helpers.
 //
 
+import Foundation
+
 /// Default timeout for IMAP operations in milliseconds (2 minutes, matching MailKit).
 public let defaultImapTimeoutMs = 120_000
 
@@ -44,6 +46,10 @@ public actor AsyncImapSession {
         get async {
             await client.capabilities
         }
+    }
+
+    private nonisolated func debugLog(_ message: String) {
+        MailFoundationLogging.debug(.imapSession, message)
     }
 
     /// The timeout for network operations in milliseconds.
@@ -293,18 +299,23 @@ public actor AsyncImapSession {
         try await ensureAuthenticated()
         return try await withSessionTimeout {
             let command = try await self.client.send(.select(mailbox))
+            self.debugLog("[select] sent command tag=\(command.tag) for mailbox=\(mailbox)")
             var emptyReads = 0
             var nextState = ImapSelectedState()
 
             while true {
                 try Task.checkCancellation()
+                self.debugLog("[select] calling nextMessages(), emptyReads=\(emptyReads)")
                 let messages = await self.client.nextMessages()
+                self.debugLog("[select] nextMessages() returned \(messages.count) messages")
                 if messages.isEmpty {
                     if await self.client.isDisconnected {
+                        self.debugLog("[select] connection closed")
                         throw SessionError.connectionClosed(message: "Connection closed by server.")
                     }
                     emptyReads += 1
                     if emptyReads > 10 {
+                        self.debugLog("[select] too many empty reads, throwing timeout")
                         throw SessionError.timeout
                     }
                     continue
@@ -312,12 +323,20 @@ public actor AsyncImapSession {
                 emptyReads = 0
                 for message in messages {
                     await self.applySelectedState(&nextState, mailbox: mailbox, from: message)
-                    if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
-                        guard response.isOk else {
-                            throw SessionError.imapError(status: response.status, text: response.text)
+                    self.debugLog("[select] checking message: hasResponse=\(message.response != nil)")
+                    if let response = message.response {
+                        self.debugLog("[select] response kind=\(response.kind), looking for tag=\(command.tag)")
+                        if case let .tagged(tag) = response.kind {
+                            self.debugLog("[select] found tagged response: tag=\(tag), matches=\(tag == command.tag)")
+                            if tag == command.tag {
+                                guard response.isOk else {
+                                    self.debugLog("[select] response is not OK, throwing error")
+                                    throw SessionError.imapError(status: response.status, text: response.text)
+                                }
+                                await self.updateSelectedState(mailbox: mailbox, state: nextState)
+                                return response
+                            }
                         }
-                        await self.updateSelectedState(mailbox: mailbox, state: nextState)
-                        return response
                     }
                 }
             }
@@ -610,7 +629,7 @@ public actor AsyncImapSession {
                 emptyReads = 0
                 for message in messages {
                     _ = await self.ingestSelectedState(from: message)
-                    if let list = ImapMailboxListResponse.parse(message.line) {
+                    if let list = ImapMailboxListResponse.parse(message) {
                         responses.append(list)
                     }
                     if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -653,7 +672,7 @@ public actor AsyncImapSession {
                 emptyReads = 0
                 for message in messages {
                     _ = await self.ingestSelectedState(from: message)
-                    if let list = ImapMailboxListResponse.parse(message.line) {
+                    if let list = ImapMailboxListResponse.parse(message) {
                         responses.append(list)
                     }
                     if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -691,7 +710,7 @@ public actor AsyncImapSession {
                 emptyReads = 0
                 for message in messages {
                     _ = await self.ingestSelectedState(from: message)
-                    if let listStatus = ImapListStatusResponse.parse(message.line) {
+                    if let listStatus = ImapListStatusResponse.parse(message) {
                         responses.append(listStatus)
                     }
                     if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -902,7 +921,7 @@ public actor AsyncImapSession {
                 emptyReads = 0
                 for message in messages {
                     _ = await self.ingestSelectedState(from: message)
-                    if let status = ImapStatusResponse.parse(message.line) {
+                    if let status = ImapStatusResponse.parse(message) {
                         result = status
                     }
                     if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
@@ -1565,11 +1584,11 @@ public actor AsyncImapSession {
                     _ = await self.ingestSelectedState(from: message)
                     if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                         if response.isOk {
-                            let fetches = messages.compactMap { ImapFetchResponse.parse($0.line) }
                             let maps = parseBodies ? ImapFetchBodyParser.parseMaps(messages) : []
                             let mapBySequence = Dictionary(uniqueKeysWithValues: maps.map { ($0.sequence, $0) })
-                            return fetches.compactMap { fetch in
-                                MessageSummary.build(fetch: fetch, bodyMap: mapBySequence[fetch.sequence])
+                            return messages.compactMap { message in
+                                guard let fetch = ImapFetchResponse.parse(message.line) else { return nil }
+                                return MessageSummary.build(message: message, bodyMap: mapBySequence[fetch.sequence])
                             }
                         }
                         throw SessionError.imapError(status: response.status, text: response.text)
@@ -1606,7 +1625,10 @@ public actor AsyncImapSession {
                     if await self.client.isDisconnected {
                         throw SessionError.connectionClosed(message: "Connection closed by server.")
                     }
-                    emptyReads += 1
+                    // Don't count as empty read if decoder is still processing a literal
+                    if await !self.client.hasPendingData {
+                        emptyReads += 1
+                    }
                     continue
                 }
                 emptyReads = 0
@@ -1654,7 +1676,10 @@ public actor AsyncImapSession {
                     if await self.client.isDisconnected {
                         throw SessionError.connectionClosed(message: "Connection closed by server.")
                     }
-                    emptyReads += 1
+                    // Don't count as empty read if decoder is still processing a literal
+                    if await !self.client.hasPendingData {
+                        emptyReads += 1
+                    }
                     continue
                 }
                 emptyReads = 0
@@ -1770,11 +1795,11 @@ public actor AsyncImapSession {
                     _ = await self.ingestSelectedState(from: message)
                     if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
                         if response.isOk {
-                            let fetches = messages.compactMap { ImapFetchResponse.parse($0.line) }
                             let maps = parseBodies ? ImapFetchBodyParser.parseMaps(messages) : []
                             let mapBySequence = Dictionary(uniqueKeysWithValues: maps.map { ($0.sequence, $0) })
-                            return fetches.compactMap { fetch in
-                                MessageSummary.build(fetch: fetch, bodyMap: mapBySequence[fetch.sequence])
+                            return messages.compactMap { message in
+                                guard let fetch = ImapFetchResponse.parse(message.line) else { return nil }
+                                return MessageSummary.build(message: message, bodyMap: mapBySequence[fetch.sequence])
                             }
                         }
                         throw SessionError.imapError(status: response.status, text: response.text)
@@ -1992,13 +2017,13 @@ public actor AsyncImapSession {
             state.apply(modSeq: modSeq)
         }
         if let fetch = ImapFetchResponse.parse(message.line),
-           let attrs = ImapFetchAttributes.parse(fetch) {
+           let attrs = ImapFetchAttributes.parse(message) {
             state.applyFetch(sequence: fetch.sequence, uid: attrs.uid, modSeq: attrs.modSeq)
         }
-        if let status = ImapStatusResponse.parse(message.line), status.mailbox == mailbox {
+        if let status = ImapStatusResponse.parse(message), status.mailbox == mailbox {
             state.apply(status: status)
         }
-        if let listStatus = ImapListStatusResponse.parse(message.line), listStatus.mailbox.name == mailbox {
+        if let listStatus = ImapListStatusResponse.parse(message), listStatus.mailbox.name == mailbox {
             state.apply(listStatus: listStatus)
         }
         if let event = ImapQresyncEvent.parse(message, validity: state.uidValidity ?? 0) {
@@ -2019,15 +2044,15 @@ public actor AsyncImapSession {
             selectedState.apply(modSeq: modSeq)
         }
         if let fetch = ImapFetchResponse.parse(message.line),
-           let attrs = ImapFetchAttributes.parse(fetch) {
+           let attrs = ImapFetchAttributes.parse(message) {
             selectedState.applyFetch(sequence: fetch.sequence, uid: attrs.uid, modSeq: attrs.modSeq)
         }
-        if let status = ImapStatusResponse.parse(message.line),
+        if let status = ImapStatusResponse.parse(message),
            let selectedMailbox,
            status.mailbox == selectedMailbox {
             selectedState.apply(status: status)
         }
-        if let listStatus = ImapListStatusResponse.parse(message.line),
+        if let listStatus = ImapListStatusResponse.parse(message),
            let selectedMailbox,
            listStatus.mailbox.name == selectedMailbox {
             selectedState.apply(listStatus: listStatus)

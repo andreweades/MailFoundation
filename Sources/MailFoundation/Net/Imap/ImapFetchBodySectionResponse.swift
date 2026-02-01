@@ -35,10 +35,16 @@ public struct ImapFetchBodySectionResponse: Sendable, Equatable {
     public let partial: ImapFetchPartial?
     public let data: [UInt8]
 
+    private static func debugLog(_ message: String) {
+        MailFoundationLogging.debug(.imapFetch, message)
+    }
+
+    /// Parses the first BODY[] or BODY.PEEK[] literal section from a FETCH response message.
+    ///
+    /// - Parameter message: The literal message containing a FETCH response.
+    /// - Returns: The parsed body section response, or `nil` if parsing fails.
     public static func parse(_ message: ImapLiteralMessage) -> ImapFetchBodySectionResponse? {
-        guard let literal = message.literal else { return nil }
-        guard let fetch = ImapFetchResponse.parse(message.line) else { return nil }
-        return parsePayload(fetch.payload, sequence: fetch.sequence, data: literal)
+        parseAll(message).first
     }
 
     public static func parsePayload(_ payload: String, sequence: Int, data: [UInt8]) -> ImapFetchBodySectionResponse? {
@@ -69,10 +75,106 @@ public struct ImapFetchBodySectionResponse: Sendable, Equatable {
         return ImapFetchBodySectionResponse(sequence: sequence, section: section, peek: peek, partial: partial, data: data)
     }
 
+    /// Parses all BODY[] and BODY.PEEK[] literal sections from a FETCH response message.
+    ///
+    /// - Parameter message: The literal message containing a FETCH response.
+    /// - Returns: An array of parsed sections (empty if none).
+    public static func parseAll(_ message: ImapLiteralMessage) -> [ImapFetchBodySectionResponse] {
+        var reader = ImapLineTokenReader(line: message.line, literals: message.literals)
+        guard let token = reader.readToken(), token.type == .asterisk else { return [] }
+        guard let sequence = reader.readNumber() else { return [] }
+        guard reader.readCaseInsensitiveAtom("FETCH") else { return [] }
+        guard let open = reader.readToken(), open.type == .openParen else { return [] }
+
+        var results: [ImapFetchBodySectionResponse] = []
+
+        while let next = reader.peekToken() {
+            if next.type == .closeParen {
+                _ = reader.readToken()
+                break
+            }
+            guard let nameToken = reader.readToken(),
+                  nameToken.type == .atom,
+                  let name = nameToken.stringValue else {
+                return results
+            }
+            let upper = name.uppercased()
+            if upper == "BODY" || upper == "BODY.PEEK" {
+                let peek = upper == "BODY.PEEK"
+                var section: ImapFetchBodySection?
+                if let bracket = reader.peekToken(), bracket.type == .openBracket {
+                    if let sectionText = reader.readBracketedContent(materializeLiterals: true) {
+                        let trimmed = sectionText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        section = trimmed.isEmpty ? nil : ImapFetchBodySection.parse(trimmed)
+                    }
+                } else {
+                    reader.skipValue()
+                    continue
+                }
+
+                var partial: ImapFetchPartial?
+                if let partialToken = reader.peekToken(),
+                   partialToken.type == .atom,
+                   let partialValue = partialToken.stringValue,
+                   partialValue.hasPrefix("<"),
+                   partialValue.hasSuffix(">") {
+                    _ = reader.readToken()
+                    partial = parsePartial(fromAtom: partialValue)
+                }
+
+                guard let dataToken = reader.readToken() else { continue }
+                switch dataToken.type {
+                case .literal:
+                    if let data = reader.literalBytes(for: dataToken) {
+                        results.append(ImapFetchBodySectionResponse(
+                            sequence: sequence,
+                            section: section,
+                            peek: peek,
+                            partial: partial,
+                            data: data
+                        ))
+                    }
+                case .qString, .atom, .flag:
+                    if let value = dataToken.stringValue {
+                        let data = Array(value.utf8)
+                        results.append(ImapFetchBodySectionResponse(
+                            sequence: sequence,
+                            section: section,
+                            peek: peek,
+                            partial: partial,
+                            data: data
+                        ))
+                    }
+                case .nilValue:
+                    break
+                default:
+                    break
+                }
+            } else {
+                reader.skipValue()
+            }
+        }
+
+        if results.isEmpty {
+            debugLog("[BodySectionResponse.parseAll] No BODY literal in message, line='\(message.line.prefix(60))'")
+        }
+        return results
+    }
+
     private static func parsePartial(from text: Substring) -> ImapFetchPartial? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.first == "<", let endIndex = trimmed.firstIndex(of: ">") else { return nil }
         let inner = trimmed[trimmed.index(after: trimmed.startIndex)..<endIndex]
+        let parts = inner.split(separator: ".", omittingEmptySubsequences: true)
+        guard parts.count == 2, let start = Int(parts[0]), let length = Int(parts[1]) else {
+            return nil
+        }
+        return ImapFetchPartial(start: start, length: length)
+    }
+
+    private static func parsePartial(fromAtom atom: String) -> ImapFetchPartial? {
+        guard atom.first == "<", atom.last == ">" else { return nil }
+        let inner = atom.dropFirst().dropLast()
         let parts = inner.split(separator: ".", omittingEmptySubsequences: true)
         guard parts.count == 2, let start = Int(parts[0]), let length = Int(parts[1]) else {
             return nil

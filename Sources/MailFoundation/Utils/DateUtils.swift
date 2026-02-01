@@ -51,14 +51,36 @@ enum DateUtils {
     }
 
     static func tryParse(_ text: String) -> Date? {
+        // Strip trailing RFC 822 comment (e.g., "(UTC)") that some servers add
+        let cleanedText = stripTrailingComment(text)
+
         for format in formats {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = format
-            if let date = formatter.date(from: text) {
+            if let date = formatter.date(from: cleanedText) {
                 return date
             }
         }
         return nil
+    }
+
+    private static func stripTrailingComment(_ text: String) -> String {
+        // RFC 822 comments are enclosed in parentheses, e.g., "(UTC)"
+        // Strip any trailing comment after the timezone
+        var result = text.trimmingCharacters(in: .whitespaces)
+        while result.hasSuffix(")") {
+            if let openParen = result.lastIndex(of: "(") {
+                // Check that the open paren comes after the timezone (which is at the end)
+                let beforeParen = result[..<openParen].trimmingCharacters(in: .whitespaces)
+                if beforeParen.isEmpty {
+                    break
+                }
+                result = beforeParen
+            } else {
+                break
+            }
+        }
+        return result
     }
 }

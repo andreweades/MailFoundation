@@ -82,14 +82,16 @@ public enum ImapFetchBodyParser {
     public static func parse(_ messages: [ImapLiteralMessage]) -> [ImapFetchBodyResult] {
         var grouped: [Int: [ImapFetchBodySectionPayload]] = [:]
         for message in messages {
-            guard let parsed = ImapFetchBodySectionResponse.parse(message) else { continue }
-            let payload = ImapFetchBodySectionPayload(
-                section: parsed.section,
-                peek: parsed.peek,
-                partial: parsed.partial,
-                data: parsed.data
-            )
-            grouped[parsed.sequence, default: []].append(payload)
+            let parsedSections = ImapFetchBodySectionResponse.parseAll(message)
+            for parsed in parsedSections {
+                let payload = ImapFetchBodySectionPayload(
+                    section: parsed.section,
+                    peek: parsed.peek,
+                    partial: parsed.partial,
+                    data: parsed.data
+                )
+                grouped[parsed.sequence, default: []].append(payload)
+            }
         }
         return grouped.map { ImapFetchBodyResult(sequence: $0.key, bodies: $0.value) }
             .sorted { $0.sequence < $1.sequence }
@@ -139,14 +141,16 @@ public actor ImapFetchBodySectionCollector {
     public init() {}
 
     public func ingest(_ message: ImapLiteralMessage) -> ImapFetchBodySectionResult? {
-        guard let parsed = ImapFetchBodySectionResponse.parse(message) else { return nil }
-        let payload = ImapFetchBodySectionPayload(
-            section: parsed.section,
-            peek: parsed.peek,
-            partial: parsed.partial,
-            data: parsed.data
-        )
-        pending[parsed.sequence, default: []].append(payload)
+        let parsedSections = ImapFetchBodySectionResponse.parseAll(message)
+        for parsed in parsedSections {
+            let payload = ImapFetchBodySectionPayload(
+                section: parsed.section,
+                peek: parsed.peek,
+                partial: parsed.partial,
+                data: parsed.data
+            )
+            pending[parsed.sequence, default: []].append(payload)
+        }
         return nil
     }
 

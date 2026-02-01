@@ -58,28 +58,19 @@ public struct ImapSearchResponse: Sendable, Equatable {
     }
 
     public static func parse(_ line: String) -> ImapSearchResponse? {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 6 else { return nil }
-        let upper = trimmed.uppercased()
-        let prefixLength: Int
-        if upper.hasPrefix("* SEARCH") {
-            prefixLength = 8
-        } else if upper.hasPrefix("* SORT") {
-            prefixLength = 6
-        } else {
+        var reader = ImapLineTokenReader(line: line)
+        guard let token = reader.readToken(), token.type == .asterisk else { return nil }
+        guard let commandToken = reader.readToken(),
+              commandToken.type == .atom,
+              let command = commandToken.stringValue else {
             return nil
         }
+        let upper = command.uppercased()
+        guard upper == "SEARCH" || upper == "SORT" else { return nil }
 
-        let startIndex = trimmed.index(trimmed.startIndex, offsetBy: prefixLength)
-        let remainder = trimmed[startIndex...].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !remainder.isEmpty else {
-            return ImapSearchResponse(ids: [])
-        }
-
-        let tokens = remainder.split(separator: " ", omittingEmptySubsequences: true)
         var ids: [UInt32] = []
-        for token in tokens {
-            if let id = UInt32(token) {
+        while let valueToken = reader.readToken() {
+            if let value = valueToken.stringValue, let id = UInt32(value) {
                 ids.append(id)
             }
         }

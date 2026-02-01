@@ -53,6 +53,14 @@ public extension ImapQresyncEvent {
     }
 
     static func parse(_ message: ImapLiteralMessage, validity: UInt32 = 0) -> ImapQresyncEvent? {
-        parse(message.line, validity: validity)
+        if let vanished = ImapVanishedResponse.parse(message.line, validity: validity) {
+            return .vanished(vanished)
+        }
+        if let fetch = ImapFetchResponse.parse(message.line),
+           let attrs = ImapFetchAttributes.parse(message),
+           let modSeq = attrs.modSeq {
+            return .fetch(ImapFetchModSeqEvent(sequence: fetch.sequence, uid: attrs.uid, modSeq: modSeq))
+        }
+        return nil
     }
 }

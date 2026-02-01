@@ -54,147 +54,55 @@ public struct ImapAnnotationResponse: Sendable, Equatable {
     public let mailbox: String
     public let entry: ImapAnnotationEntry
 
+    /// Parses an ANNOTATION response from a literal-aware message.
+    ///
+    /// - Parameter message: The literal response message.
+    /// - Returns: The parsed annotation response, or `nil` if parsing fails.
     public static func parse(_ message: ImapLiteralMessage) -> ImapAnnotationResponse? {
-        let trimmed = message.line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("*") else { return nil }
-        var index = trimmed.index(after: trimmed.startIndex)
-
-        func skipWhitespace() {
-            while index < trimmed.endIndex, trimmed[index].isWhitespace {
-                index = trimmed.index(after: index)
-            }
-        }
-
-        func readAtom() -> String? {
-            skipWhitespace()
-            guard index < trimmed.endIndex else { return nil }
-            let start = index
-            while index < trimmed.endIndex {
-                let ch = trimmed[index]
-                if ch.isWhitespace || ch == "(" || ch == ")" {
-                    break
-                }
-                index = trimmed.index(after: index)
-            }
-            guard start < index else { return nil }
-            return String(trimmed[start..<index])
-        }
-
-        func readQuoted() -> String? {
-            guard index < trimmed.endIndex, trimmed[index] == "\"" else { return nil }
-            index = trimmed.index(after: index)
-            var result = ""
-            var escape = false
-            while index < trimmed.endIndex {
-                let ch = trimmed[index]
-                if escape {
-                    result.append(ch)
-                    escape = false
-                } else if ch == "\\" {
-                    escape = true
-                } else if ch == "\"" {
-                    index = trimmed.index(after: index)
-                    return result
-                } else {
-                    result.append(ch)
-                }
-                index = trimmed.index(after: index)
-            }
-            return nil
-        }
-
-        func readStringOrNil() -> String?? {
-            skipWhitespace()
-            guard index < trimmed.endIndex else { return nil }
-            if trimmed[index] == "\"" {
-                if let value = readQuoted() {
-                    return .some(value)
-                }
-                return nil
-            }
-            guard let atom = readAtom() else { return nil }
-            if atom.uppercased() == "NIL" {
-                return .some(nil)
-            }
-            return .some(atom)
-        }
-
-        guard let command = readAtom(), command.uppercased() == "ANNOTATION" else { return nil }
-        guard let mailboxValue = readStringOrNil(), let mailbox = mailboxValue else { return nil }
-        guard let entryValue = readStringOrNil(), let entry = entryValue else { return nil }
-
-        guard let listStart = trimmed.firstIndex(of: "(") else {
-            return ImapAnnotationResponse(mailbox: mailbox, entry: ImapAnnotationEntry(entry: entry, attributes: []))
-        }
-        var inner = String(trimmed[listStart...])
-        if inner.first == "(" {
-            inner.removeFirst()
-        }
-        if inner.last == ")" {
-            inner.removeLast()
-        }
-        var tokens = tokenize(inner)
-        if let literal = message.literal,
-           let last = tokens.last,
-           last.first == "{" {
-            tokens[tokens.count - 1] = String(decoding: literal, as: UTF8.self)
-        }
+        var reader = ImapLineTokenReader(line: message.line, literals: message.literals)
+        guard let token = reader.readToken(), token.type == .asterisk else { return nil }
+        guard reader.readCaseInsensitiveAtom("ANNOTATION") else { return nil }
+        guard let mailboxToken = reader.readToken() else { return nil }
+        guard let mailbox = readStringValue(token: mailboxToken, reader: &reader, allowNil: false) else { return nil }
+        guard let entryToken = reader.readToken() else { return nil }
+        guard let entry = readStringValue(token: entryToken, reader: &reader, allowNil: false) else { return nil }
 
         var attributes: [ImapAnnotationAttribute] = []
-        var idx = 0
-        while idx + 1 < tokens.count {
-            let name = tokens[idx]
-            let rawValue = tokens[idx + 1]
-            let value = rawValue.caseInsensitiveCompare("NIL") == .orderedSame ? nil : rawValue
-            attributes.append(ImapAnnotationAttribute(name: name, value: value))
-            idx += 2
+        if let peek = reader.peekToken(), peek.type == .openParen {
+            _ = reader.readToken()
+            while let next = reader.peekToken() {
+                if next.type == .closeParen {
+                    _ = reader.readToken()
+                    break
+                }
+                guard let nameToken = reader.readToken(),
+                      let name = readStringValue(token: nameToken, reader: &reader, allowNil: false) else {
+                    return nil
+                }
+                guard let valueToken = reader.readToken() else { return nil }
+                let value = readStringValue(token: valueToken, reader: &reader, allowNil: true)
+                attributes.append(ImapAnnotationAttribute(name: name, value: value))
+            }
         }
+
         return ImapAnnotationResponse(mailbox: mailbox, entry: ImapAnnotationEntry(entry: entry, attributes: attributes))
     }
 
-    private static func tokenize(_ text: String) -> [String] {
-        var tokens: [String] = []
-        var index = text.startIndex
-        while index < text.endIndex {
-            let ch = text[index]
-            if ch.isWhitespace {
-                index = text.index(after: index)
-                continue
-            }
-            if ch == "\"" {
-                index = text.index(after: index)
-                var value = ""
-                var escape = false
-                while index < text.endIndex {
-                    let current = text[index]
-                    if escape {
-                        value.append(current)
-                        escape = false
-                    } else if current == "\\" {
-                        escape = true
-                    } else if current == "\"" {
-                        index = text.index(after: index)
-                        break
-                    } else {
-                        value.append(current)
-                    }
-                    index = text.index(after: index)
-                }
-                tokens.append(value)
-                continue
-            }
-
-            let start = index
-            while index < text.endIndex {
-                let current = text[index]
-                if current.isWhitespace {
-                    break
-                }
-                index = text.index(after: index)
-            }
-            tokens.append(String(text[start..<index]))
+    private static func readStringValue(
+        token: ImapToken,
+        reader: inout ImapLineTokenReader,
+        allowNil: Bool
+    ) -> String? {
+        switch token.type {
+        case .atom, .qString, .flag:
+            return token.stringValue
+        case .literal:
+            return reader.literalString(for: token)
+        case .nilValue:
+            return allowNil ? nil : nil
+        default:
+            return nil
         }
-        return tokens
     }
 }
 

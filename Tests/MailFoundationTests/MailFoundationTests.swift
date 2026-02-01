@@ -427,6 +427,23 @@ func imapFetchBodySectionResponseParsing() {
     #expect(parsedPeek?.partial == ImapFetchPartial(start: 0, length: 3))
 }
 
+@Test("IMAP fetch body section response parsing supports multiple literals")
+func imapFetchBodySectionResponseMultipleLiterals() {
+    let line = "* 1 FETCH (BODY[HEADER] {5} BODY[TEXT] {3})"
+    let message = ImapLiteralMessage(
+        line: line,
+        response: ImapResponse.parse(line),
+        literal: nil,
+        literals: [Array("Hello".utf8), Array("abc".utf8)]
+    )
+    let parsed = ImapFetchBodySectionResponse.parseAll(message)
+    #expect(parsed.count == 2)
+    let header = parsed.first { $0.section?.subsection == .header }
+    #expect(header?.data == Array("Hello".utf8))
+    let text = parsed.first { $0.section?.subsection == .text }
+    #expect(text?.data == Array("abc".utf8))
+}
+
 @Test("IMAP envelope cache")
 func imapEnvelopeCache() async {
     let raw = "(\"Wed, 01 Jan 2020 00:00:00 +0000\" \"Hello\" ((\"Alice\" NIL \"alice\" \"example.com\")) NIL NIL ((\"Bob\" NIL \"bob\" \"example.com\")) NIL NIL NIL \"<msgid>\")"
@@ -660,6 +677,24 @@ func envelopeLiteralParsing() throws {
     let text = "(\"Wed, 01 Jan 2020 00:00:00 +0000\" {5}\r\nHello NIL NIL NIL NIL NIL NIL NIL NIL)"
     let envelope = try Envelope(parsing: text)
     #expect(envelope.subject == "Hello")
+}
+
+@Test("IMAP FETCH envelope literals are materialized")
+func imapFetchEnvelopeLiterals() {
+    let envelopeText = "({37}\r\nWed, 17 Jul 1996 02:23:25 -0700 (PDT) {36}\r\nIMAP4rev1 WG mtg summary and minutes (({10}\r\nTerry Gray NIL {4}\r\ngray \"cac.washington.edu\")) ((\"Terry Gray\" NIL \"gray\" \"cac.washington.edu\")) ((\"Terry Gray\" NIL \"gray\" \"cac.washington.edu\")) ((NIL NIL \"imap\" \"cac.washington.edu\")) ((NIL NIL \"minutes\" \"CNRI.Reston.VA.US\") (\"John Klensin\" NIL \"KLENSIN\" \"MIT.EDU\")) NIL NIL {35}\r\n<B27397-0100000@cac.washington.edu>)"
+    let response = "* 1 FETCH (ENVELOPE \(envelopeText))\r\n"
+
+    var decoder = ImapLiteralDecoder()
+    let messages = decoder.append(Array(response.utf8))
+
+    #expect(messages.count == 1)
+    guard let attrs = ImapFetchAttributes.parse(messages[0]) else {
+        #expect(Bool(false))
+        return
+    }
+    let envelope = attrs.parsedImapEnvelope()
+    #expect(envelope?.subject == "IMAP4rev1 WG mtg summary and minutes")
+    #expect(envelope?.messageId == "B27397-0100000@cac.washington.edu")
 }
 
 @Test("Envelope apply headers")
@@ -1325,12 +1360,14 @@ func pop3MultilineDecoderDotStuffingSplitChunks() {
 @Test("IMAP literal decoder")
 func imapLiteralDecoder() {
     var decoder = ImapLiteralDecoder()
-    let first = decoder.append(Array("* 1 FETCH {5}\r\n".utf8))
+    let first = decoder.append(Array("* 1 FETCH (BODY[] {5}\r\n".utf8))
     #expect(first.isEmpty)
     let second = decoder.append(Array("HELLO".utf8))
-    #expect(second.count == 1)
-    #expect(second.first?.line == "* 1 FETCH {5}")
-    #expect(String(decoding: second.first?.literal ?? [], as: UTF8.self) == "HELLO")
+    #expect(second.isEmpty)
+    let third = decoder.append(Array(")\r\n".utf8))
+    #expect(third.count == 1)
+    #expect(third.first?.line == "* 1 FETCH (BODY[] {5})")
+    #expect(String(decoding: third.first?.literal ?? [], as: UTF8.self) == "HELLO")
 }
 
 @Test("SMTP client send/receive pipeline")
@@ -1526,15 +1563,18 @@ func asyncImapLiteralHandling() async throws {
     let client = AsyncImapClient(transport: transport)
     try await client.start()
 
-    await transport.yieldIncoming(Array("* 1 FETCH {5}\r\n".utf8))
+    await transport.yieldIncoming(Array("* 1 FETCH (BODY[] {5}\r\n".utf8))
     await transport.yieldIncoming(Array("HELLO".utf8))
+    await transport.yieldIncoming(Array(")\r\n".utf8))
     let first = await client.nextMessages()
     let second = await client.nextMessages()
+    let third = await client.nextMessages()
 
     #expect(first.isEmpty)
-    #expect(second.count == 1)
-    #expect(second.first?.line == "* 1 FETCH {5}")
-    #expect(String(decoding: second.first?.literal ?? [], as: UTF8.self) == "HELLO")
+    #expect(second.isEmpty)
+    #expect(third.count == 1)
+    #expect(third.first?.line == "* 1 FETCH (BODY[] {5})")
+    #expect(String(decoding: third.first?.literal ?? [], as: UTF8.self) == "HELLO")
 
     await client.stop()
 }
@@ -2289,6 +2329,7 @@ func asyncImapSessionBodyFetchMapsQresync() async throws {
     let fetchTask = Task { try await session.fetchBodySectionsWithQresync("1", items: "BODY[]") }
     await transport.yieldIncoming(Array("* 1 FETCH (BODY[] {5}\r\n".utf8))
     await transport.yieldIncoming(Array("Hello".utf8))
+    await transport.yieldIncoming(Array(")\r\n".utf8))
     await transport.yieldIncoming(Array("* 1 FETCH (UID 9 MODSEQ (6))\r\n".utf8))
     await transport.yieldIncoming(Array("* VANISHED 2\r\n".utf8))
     await transport.yieldIncoming(Array("A0003 OK FETCH\r\n".utf8))
@@ -2737,6 +2778,7 @@ func syncImapSessionBodyFetchMapsQresync() throws {
         Array("A0002 OK SELECT\r\n".utf8),
         Array("* 1 FETCH (BODY[] {5}\r\n".utf8),
         Array("Hello".utf8),
+        Array(")\r\n".utf8),
         Array("* 1 FETCH (UID 9 MODSEQ (6))\r\n".utf8),
         Array("* VANISHED 2\r\n".utf8),
         Array("A0003 OK FETCH\r\n".utf8)
