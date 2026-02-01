@@ -575,6 +575,178 @@ func imapFetchBodySectionResponseMultipleLiterals() {
     #expect(body?.data == Array("This is the message body.\r\n".utf8))
 }
 
+@Test("IMAP fetch body stream partial fixtures")
+func imapFetchBodyStreamPartialFixtures() {
+    let expected = "nit Tests <unit-tests@mimekit.net>\r\nMIME-Version: 1.0\r\nContent-T"
+
+    let fixture = [
+        "* 1 FETCH (UID 1 BODY[]<128> {64}",
+        "nit Tests <unit-tests@mimekit.net>",
+        "MIME-Version: 1.0",
+        "Content-T)",
+        "A######## OK Fetch completed (0.002 + 0.000 secs).",
+        ""
+    ].joined(separator: "\r\n")
+    let messages = decodeImapLiteralMessages(fixture)
+    #expect(messages.count == 2)
+    let parsed = ImapFetchBodySectionResponse.parseAll(messages[0])
+    #expect(parsed.count == 1)
+    #expect(parsed.first?.section == nil)
+    #expect(parsed.first?.partial == nil)
+    #expect(parsed.first?.data == Array(expected.utf8))
+    #expect(ImapFetchAttributes.parse(messages[0])?.uid == 1)
+
+    let fixtureWithTrailingUid = [
+        "* 1 FETCH (BODY[]<128> {64}",
+        "nit Tests <unit-tests@mimekit.net>",
+        "MIME-Version: 1.0",
+        "Content-T UID 1)",
+        "A######## OK Fetch completed (0.002 + 0.000 secs).",
+        ""
+    ].joined(separator: "\r\n")
+    let messagesWithTrailingUid = decodeImapLiteralMessages(fixtureWithTrailingUid)
+    #expect(messagesWithTrailingUid.count == 2)
+    let parsedWithTrailingUid = ImapFetchBodySectionResponse.parseAll(messagesWithTrailingUid[0])
+    #expect(parsedWithTrailingUid.count == 1)
+    #expect(parsedWithTrailingUid.first?.data == Array(expected.utf8))
+    #expect(ImapFetchAttributes.parse(messagesWithTrailingUid[0])?.uid == 1)
+}
+
+@Test("IMAP fetch body stream section fixtures")
+func imapFetchBodyStreamSectionFixtures() {
+    let headerFieldsFixture = [
+        "* 1 FETCH (UID 1 BODY[HEADER.FIELDS (MIME-VERSION CONTENT-TYPE)] {62}",
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        ")",
+        "A######## OK Fetch completed (0.002 + 0.000 secs).",
+        ""
+    ].joined(separator: "\r\n")
+    let headerFieldsMessages = decodeImapLiteralMessages(headerFieldsFixture)
+    #expect(headerFieldsMessages.count == 2)
+    let headerFieldsParsed = ImapFetchBodySectionResponse.parseAll(headerFieldsMessages[0])
+    #expect(headerFieldsParsed.count == 1)
+    if case let .headerFields(fields)? = headerFieldsParsed.first?.section?.subsection {
+        #expect(fields == ["MIME-VERSION", "CONTENT-TYPE"])
+    } else {
+        #expect(Bool(false))
+    }
+
+    let mimeFixture = [
+        "* 2 FETCH (BODY[1.MIME] {43}",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        " UID 2)",
+        "A######## OK Fetch completed (0.002 + 0.000 secs).",
+        ""
+    ].joined(separator: "\r\n")
+    let mimeMessages = decodeImapLiteralMessages(mimeFixture)
+    #expect(mimeMessages.count == 2)
+    let mimeParsed = ImapFetchBodySectionResponse.parseAll(mimeMessages[0])
+    #expect(mimeParsed.count == 1)
+    #expect(mimeParsed.first?.section?.part == [1])
+    #expect(mimeParsed.first?.section?.subsection == .mime)
+    #expect(mimeParsed.first?.data.starts(with: Array("Content-Type:".utf8)) == true)
+    #expect(ImapFetchAttributes.parse(mimeMessages[0])?.uid == 2)
+
+    let headersFixture = [
+        "* 1 FETCH (BODY[HEADER] {226}",
+        "From: Unit Tests <unit-tests@mimekit.net>",
+        "Date: Sun, 02 Oct 2016 17:56:45 -0400",
+        "Subject: A",
+        "Message-Id: <a@mimekit.net>",
+        "To: Unit Tests <unit-tests@mimekit.net>",
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        " UID 1)",
+        "A######## OK Fetch completed (0.002 + 0.000 secs).",
+        ""
+    ].joined(separator: "\r\n")
+    let headersMessages = decodeImapLiteralMessages(headersFixture)
+    #expect(headersMessages.count == 2)
+    let headersParsed = ImapFetchBodySectionResponse.parseAll(headersMessages[0])
+    #expect(headersParsed.count == 1)
+    #expect(headersParsed.first?.section?.subsection == .header)
+    if let data = headersParsed.first?.data {
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.contains("Subject: A"))
+    } else {
+        #expect(Bool(false))
+    }
+    #expect(ImapFetchAttributes.parse(headersMessages[0])?.uid == 1)
+
+    let bodyFixture = [
+        "* 1 FETCH (UID 1 BODY[] {253}",
+        "From: Unit Tests <unit-tests@mimekit.net>",
+        "Date: Sun, 02 Oct 2016 17:56:45 -0400",
+        "Subject: A",
+        "Message-Id: <a@mimekit.net>",
+        "To: Unit Tests <unit-tests@mimekit.net>",
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        "This is the message body.",
+        ")",
+        "A######## OK Fetch completed (0.002 + 0.000 secs).",
+        ""
+    ].joined(separator: "\r\n")
+    let bodyMessages = decodeImapLiteralMessages(bodyFixture)
+    #expect(bodyMessages.count == 2)
+    let bodyParsed = ImapFetchBodySectionResponse.parseAll(bodyMessages[0])
+    #expect(bodyParsed.count == 1)
+    #expect(bodyParsed.first?.section == nil)
+    if let data = bodyParsed.first?.data {
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.contains("This is the message body."))
+    } else {
+        #expect(Bool(false))
+    }
+    #expect(ImapFetchAttributes.parse(bodyMessages[0])?.uid == 1)
+}
+
+@Test("IMAP fetch body stream collection fixtures")
+func imapFetchBodyStreamCollectionFixtures() {
+    let expected = Array("This is some dummy text just to make sure this is working correctly.".utf8)
+    let fixture = [
+        "* 1 FETCH (UID 1 BODY[] {68}",
+        "This is some dummy text just to make sure this is working correctly.)",
+        "* 2 FETCH (UID 2 BODY[] {68}",
+        "This is some dummy text just to make sure this is working correctly.)",
+        "* 3 FETCH (UID 3 BODY[] {68}",
+        "This is some dummy text just to make sure this is working correctly.)",
+        "A######## OK Fetch completed (0.002 + 0.000 secs).",
+        ""
+    ].joined(separator: "\r\n")
+    let messages = decodeImapLiteralMessages(fixture)
+    #expect(messages.count == 4)
+    let parsed = messages.prefix(3).flatMap { ImapFetchBodySectionResponse.parseAll($0) }
+    #expect(parsed.count == 3)
+    for item in parsed {
+        #expect(item.data == expected)
+    }
+
+    let fixtureWithTrailingUid = [
+        "* 1 FETCH (BODY[] {68}",
+        "This is some dummy text just to make sure this is working correctly. UID 1)",
+        "* 2 FETCH (BODY[] {68}",
+        "This is some dummy text just to make sure this is working correctly. UID 2)",
+        "* 3 FETCH (BODY[] {68}",
+        "This is some dummy text just to make sure this is working correctly. UID 3)",
+        "A######## OK Fetch completed (0.002 + 0.000 secs).",
+        ""
+    ].joined(separator: "\r\n")
+    let messagesWithTrailingUid = decodeImapLiteralMessages(fixtureWithTrailingUid)
+    #expect(messagesWithTrailingUid.count == 4)
+    let parsedWithTrailingUid = messagesWithTrailingUid.prefix(3).flatMap { ImapFetchBodySectionResponse.parseAll($0) }
+    #expect(parsedWithTrailingUid.count == 3)
+    for item in parsedWithTrailingUid {
+        #expect(item.data == expected)
+    }
+    #expect(ImapFetchAttributes.parse(messagesWithTrailingUid[0])?.uid == 1)
+}
+
 @Test("IMAP fetch attributes skip unknown tokens with literals")
 func imapFetchAttributesSkipUnknownWithLiterals() {
     let fixture = [
