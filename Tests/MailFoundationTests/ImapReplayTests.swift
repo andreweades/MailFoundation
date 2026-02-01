@@ -62,3 +62,42 @@ func imapReplayDovecotSpecialUseList() throws {
     #expect(session.specialUseMailboxes.contains { $0.specialUse == .junk })
     #expect(transport.failures.isEmpty)
 }
+
+@Test("IMAP replay LIST with literal mailbox name")
+func imapReplayListWithLiteralMailbox() throws {
+    let transport = ImapReplayTransport(steps: [
+        .greeting("dovecot/dovecot.greeting.txt"),
+        .command("A0001 LOGIN username password\r\n", fixture: "dovecot/authenticate+gmail-capabilities.txt"),
+        .command("A0002 NAMESPACE\r\n", fixture: "dovecot/dovecot.namespace.txt"),
+        .command("A0003 LIST (SPECIAL-USE) \"\" \"*\"\r\n", fixture: "dovecot/list-special-use.txt"),
+        .command("A0004 LIST \"\" \"*\"\r\n", fixture: "common/common.list-literal-subfolders.txt")
+    ])
+
+    let session = ImapSession(transport: transport, maxReads: 6)
+    _ = try session.connect()
+    _ = try session.login(user: "username", password: "password")
+
+    let list = try session.list(reference: "", mailbox: "*")
+    #expect(list.contains { $0.name == "Literal Folder Name" })
+    #expect(transport.failures.isEmpty)
+}
+
+@Test("IMAP replay STATUS with literal mailbox name")
+func imapReplayStatusWithLiteralMailbox() throws {
+    let transport = ImapReplayTransport(steps: [
+        .greeting("dovecot/dovecot.greeting.txt"),
+        .command("A0001 LOGIN username password\r\n", fixture: "dovecot/authenticate+gmail-capabilities.txt"),
+        .command("A0002 NAMESPACE\r\n", fixture: "dovecot/dovecot.namespace.txt"),
+        .command("A0003 LIST (SPECIAL-USE) \"\" \"*\"\r\n", fixture: "dovecot/list-special-use.txt"),
+        .command("A0004 STATUS \"Literal Folder Name\" (MESSAGES)\r\n", fixture: "common/common.status-literal-folder.txt")
+    ])
+
+    let session = ImapSession(transport: transport, maxReads: 6)
+    _ = try session.connect()
+    _ = try session.login(user: "username", password: "password")
+
+    let status = try session.status(mailbox: "Literal Folder Name", items: ["MESSAGES"])
+    #expect(status.mailbox == "Literal Folder Name")
+    #expect(status.items["MESSAGES"] == 60)
+    #expect(transport.failures.isEmpty)
+}
