@@ -1553,6 +1553,8 @@ func imapResponseParser() {
 func imapCommandSerializationExtras() {
     #expect(ImapCommandKind.create("INBOX").command(tag: "A1").serialized == "A1 CREATE INBOX\r\n")
     #expect(ImapCommandKind.list("", "*").command(tag: "A1").serialized == "A1 LIST \"\" \"*\"\r\n")
+    #expect(ImapCommandKind.listExtended("", "INBOX", returns: [.subscribed, .children]).command(tag: "A1").serialized ==
+        "A1 LIST \"\" INBOX RETURN (SUBSCRIBED CHILDREN)\r\n")
     #expect(ImapCommandKind.listSpecialUse("", "*").command(tag: "A1").serialized == "A1 LIST (SPECIAL-USE) \"\" \"*\"\r\n")
     #expect(ImapCommandKind.listStatus("", "*", items: ["MESSAGES", "UNSEEN"]).command(tag: "A1").serialized == "A1 LIST \"\" \"*\" RETURN (STATUS (MESSAGES UNSEEN))\r\n")
     #expect(ImapCommandKind.xlist("", "*").command(tag: "A1").serialized == "A1 XLIST \"\" \"*\"\r\n")
@@ -1560,6 +1562,8 @@ func imapCommandSerializationExtras() {
     #expect(ImapCommandKind.uidFetch("1:*", "(FLAGS)").command(tag: "A1").serialized == "A1 UID FETCH 1:* (FLAGS)\r\n")
     #expect(ImapCommandKind.enable(["UTF8=ACCEPT"]).command(tag: "A1").serialized == "A1 ENABLE UTF8=ACCEPT\r\n")
     #expect(ImapCommandKind.starttls.command(tag: "A1").serialized == "A1 STARTTLS\r\n")
+    #expect(ImapCommandKind.notify("NONE").command(tag: "A1").serialized == "A1 NOTIFY NONE\r\n")
+    #expect(ImapCommandKind.compress("DEFLATE").command(tag: "A1").serialized == "A1 COMPRESS DEFLATE\r\n")
 }
 
 @Test("IMAP capabilities parsing")

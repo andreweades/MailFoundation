@@ -160,6 +160,20 @@ public protocol AsyncStartTlsTransport: AsyncTransport {
     func startTLS(validateCertificate: Bool) async throws
 }
 
+// MARK: - AsyncCompressionTransport Protocol
+
+/// An async transport that supports enabling IMAP COMPRESS.
+///
+/// After a successful COMPRESS command, the transport should begin compressing
+/// subsequent reads and writes.
+@available(macOS 10.15, iOS 13.0, *)
+public protocol AsyncCompressionTransport: AsyncTransport {
+    /// Enables compression for subsequent reads and writes.
+    ///
+    /// - Parameter algorithm: The negotiated compression algorithm (e.g., "DEFLATE").
+    func startCompression(algorithm: String) async throws
+}
+
 // MARK: - AsyncTransportError
 
 /// Errors that can occur during async transport operations.

@@ -71,13 +71,23 @@ public final class ImapSession {
     public func capability() throws -> ImapResponse {
         let command = client.send(.capability)
         try ensureWrite()
-        guard let response = client.waitForTagged(command.tag, maxReads: maxReads) else {
-            throw SessionError.timeout
+        var reads = 0
+        while reads < maxReads {
+            let messages = client.receiveWithLiterals()
+            if messages.isEmpty {
+                reads += 1
+                continue
+            }
+            for message in messages {
+                if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                    guard response.isOk else {
+                        throw SessionError.imapError(status: response.status, text: response.text)
+                    }
+                    return response
+                }
+            }
         }
-        guard response.isOk else {
-            throw SessionError.imapError(status: response.status, text: response.text)
-        }
-        return response
+        throw SessionError.timeout
     }
 
     public func login(user: String, password: String) throws -> ImapResponse {
@@ -715,8 +725,25 @@ public final class ImapSession {
         return responses.map { ImapMailbox(kind: $0.kind, name: $0.name, delimiter: $0.delimiter, attributes: $0.attributes) }
     }
 
+    public func listExtended(
+        reference: String,
+        mailbox: String,
+        returns: [ImapListReturnOption] = []
+    ) throws -> [ImapMailbox] {
+        let responses = try listExtendedResponses(reference: reference, mailbox: mailbox, returns: returns)
+        return responses.map { ImapMailbox(kind: $0.kind, name: $0.name, delimiter: $0.delimiter, attributes: $0.attributes) }
+    }
+
     public func listResponses(reference: String, mailbox: String) throws -> [ImapMailboxListResponse] {
         try listResponses(command: .list(reference, mailbox))
+    }
+
+    public func listExtendedResponses(
+        reference: String,
+        mailbox: String,
+        returns: [ImapListReturnOption] = []
+    ) throws -> [ImapMailboxListResponse] {
+        try listResponses(command: .listExtended(reference, mailbox, returns: returns))
     }
 
     private func listResponses(command: ImapCommandKind) throws -> [ImapMailboxListResponse] {
@@ -1441,6 +1468,71 @@ public final class ImapSession {
         }
 
         throw SessionError.timeout
+    }
+
+    public func notify(arguments: String) throws -> ImapResponse {
+        try ensureAuthenticated()
+        let command = client.send(.notify(arguments))
+        try ensureWrite()
+        var reads = 0
+
+        while reads < maxReads {
+            let messages = client.receiveWithLiterals()
+            if messages.isEmpty {
+                reads += 1
+                continue
+            }
+
+            for message in messages {
+                _ = ingestSelectedState(from: message)
+                if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                    guard response.isOk else {
+                        throw SessionError.imapError(status: response.status, text: response.text)
+                    }
+                    return response
+                }
+            }
+        }
+
+        throw SessionError.timeout
+    }
+
+    public func compress(algorithm: String = "DEFLATE") throws -> ImapResponse {
+        let current = ImapSessionState(client.state)
+        switch current {
+        case .connected, .authenticated:
+            break
+        case .selected:
+            throw SessionError.invalidImapState(expected: .authenticated, actual: current)
+        case .disconnected, .authenticating:
+            throw SessionError.invalidImapState(expected: .connected, actual: current)
+        }
+
+        let normalized = algorithm.uppercased()
+        guard let caps = client.capabilities,
+              caps.rawTokens.contains(where: { $0.uppercased() == "COMPRESS=\(normalized)" }) else {
+            throw SessionError.compressionNotSupported
+        }
+        guard let compressionTransport = transport as? CompressionTransport else {
+            throw SessionError.compressionNotSupported
+        }
+
+        let command = client.send(.compress(normalized))
+        try ensureWrite()
+        guard let response = client.waitForTagged(command.tag, maxReads: maxReads) else {
+            throw SessionError.timeout
+        }
+
+        if response.isOk {
+            try compressionTransport.startCompression(algorithm: normalized)
+            return response
+        }
+
+        if response.text.uppercased().contains("COMPRESSIONACTIVE") {
+            return response
+        }
+
+        throw SessionError.imapError(status: response.status, text: response.text)
     }
 
     public func startTls(validateCertificate: Bool = true) throws -> ImapResponse {

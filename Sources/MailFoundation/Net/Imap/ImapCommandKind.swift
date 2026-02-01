@@ -87,6 +87,7 @@ public enum ImapCommandKind: Sendable {
     case subscribe(String)
     case unsubscribe(String)
     case list(String, String)
+    case listExtended(String, String, returns: [ImapListReturnOption])
     case listSpecialUse(String, String)
     case listStatus(String, String, items: [String])
     case lsub(String, String)
@@ -123,6 +124,8 @@ public enum ImapCommandKind: Sendable {
     case idle
     case idleDone
     case starttls
+    case notify(String)
+    case compress(String)
 
     public func command(tag: String) -> ImapCommand {
         switch self {
@@ -155,6 +158,16 @@ public enum ImapCommandKind: Sendable {
             return ImapCommand(tag: tag, name: "UNSUBSCRIBE", arguments: imapAString(mailbox))
         case let .list(reference, mailbox):
             return ImapCommand(tag: tag, name: "LIST", arguments: "\(imapAString(reference)) \(imapAString(mailbox))")
+        case let .listExtended(reference, mailbox, returns):
+            if returns.isEmpty {
+                return ImapCommand(tag: tag, name: "LIST", arguments: "\(imapAString(reference)) \(imapAString(mailbox))")
+            }
+            let options = returns.map { $0.serialized }.joined(separator: " ")
+            return ImapCommand(
+                tag: tag,
+                name: "LIST",
+                arguments: "\(imapAString(reference)) \(imapAString(mailbox)) RETURN (\(options))"
+            )
         case let .listSpecialUse(reference, mailbox):
             return ImapCommand(
                 tag: tag,
@@ -247,6 +260,10 @@ public enum ImapCommandKind: Sendable {
             return ImapCommand(tag: tag, name: "DONE")
         case .starttls:
             return ImapCommand(tag: tag, name: "STARTTLS")
+        case let .notify(arguments):
+            return ImapCommand(tag: tag, name: "NOTIFY", arguments: arguments)
+        case let .compress(algorithm):
+            return ImapCommand(tag: tag, name: "COMPRESS", arguments: algorithm)
         }
     }
 }

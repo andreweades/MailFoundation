@@ -126,6 +126,19 @@ public protocol StartTlsTransport: Transport {
     func startTLS(validateCertificate: Bool)
 }
 
+// MARK: - CompressionTransport Protocol
+
+/// A transport that supports enabling IMAP COMPRESS.
+///
+/// IMAP compression is negotiated at the protocol level and then the transport
+/// begins compressing subsequent reads and writes.
+public protocol CompressionTransport: Transport {
+    /// Enables compression for subsequent reads and writes.
+    ///
+    /// - Parameter algorithm: The negotiated compression algorithm (e.g., "DEFLATE").
+    func startCompression(algorithm: String) throws
+}
+
 // MARK: - StreamTransport
 
 /// A transport implementation based on Foundation streams.

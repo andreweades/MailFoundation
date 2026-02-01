@@ -23,31 +23,28 @@
 //
 
 //
-// SessionError.swift
+// ImapListReturnOption.swift
 //
-// Common sync session errors.
+// IMAP LIST-EXTENDED return options.
 //
 
-public enum SessionError: Error, Sendable, Equatable {
-    case timeout
-    case transportWriteFailed
-    case connectionClosed(message: String)
-    case invalidState(expected: MailServiceState, actual: MailServiceState)
-    case invalidImapState(expected: ImapSessionState, actual: ImapSessionState)
-    case startTlsNotSupported
-    case compressionNotSupported
-    case smtpError(code: Int, message: String, enhancedStatusCode: SmtpEnhancedStatusCode?)
-    case pop3Error(message: String)
-    case imapError(status: ImapResponseStatus?, text: String)
-}
+/// Represents a LIST-EXTENDED return option.
+public enum ImapListReturnOption: Sendable, Equatable {
+    case subscribed
+    case children
+    case specialUse
+    case other(String)
 
-public extension SessionError {
-    var smtpStatusCode: SmtpStatusCode? {
+    var serialized: String {
         switch self {
-        case let .smtpError(code, _, _):
-            return SmtpStatusCode(rawValue: code)
-        default:
-            return nil
+        case .subscribed:
+            return "SUBSCRIBED"
+        case .children:
+            return "CHILDREN"
+        case .specialUse:
+            return "SPECIAL-USE"
+        case let .other(value):
+            return value
         }
     }
 }

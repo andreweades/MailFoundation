@@ -65,13 +65,15 @@ struct ImapReplayStep {
     }
 }
 
-final class ImapReplayTransport: Transport {
+final class ImapReplayTransport: Transport, CompressionTransport {
     private var steps: [ImapReplayStep]
     private var stepIndex = 0
     private var readyToRespond = false
 
     var written: [[UInt8]] = []
     var failures: [String] = []
+    var compressionStarted = false
+    var compressionAlgorithm: String?
 
     init(steps: [ImapReplayStep]) {
         self.steps = steps
@@ -114,5 +116,10 @@ final class ImapReplayTransport: Transport {
         stepIndex += 1
         readyToRespond = stepIndex < steps.count && steps[stepIndex].expectedCommand == nil
         return step.response
+    }
+
+    func startCompression(algorithm: String) throws {
+        compressionStarted = true
+        compressionAlgorithm = algorithm
     }
 }

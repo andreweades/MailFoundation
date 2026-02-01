@@ -86,4 +86,11 @@ public extension ImapCommandKind {
         let criteria = try ImapSort.buildArguments(orderBy: orderBy, query: query, charset: charset)
         return .uidSort(criteria)
     }
+
+    static func listExtended(reference: String, mailbox: String, returns: [ImapListReturnOption]) -> ImapCommandKind {
+        .listExtended(reference, mailbox, returns: returns)
+    }
+
+    // NOTE: notify/compress helpers intentionally omitted to avoid overlapping
+    // enum-case constructors.
 }

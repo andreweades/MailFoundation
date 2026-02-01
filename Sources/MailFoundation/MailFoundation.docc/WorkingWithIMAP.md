@@ -47,6 +47,22 @@ try session.login(username: "user", password: "pass")
 try session.logout()
 ```
 
+### Advanced IMAP Extensions
+
+Use ``ImapSession`` to access lower-level extensions like NOTIFY and COMPRESS:
+
+```swift
+// Request server-side event notifications (RFC 5465)
+let notifyArgs = "SET STATUS (SELECTED (MessageNew MessageExpunge FlagChange))"
+_ = try session.notify(arguments: notifyArgs)
+
+// Enable COMPRESS (RFC 4978) before selecting a folder
+_ = try session.compress(algorithm: "DEFLATE")
+```
+
+`compress` requires a transport that supports compression and a server
+advertising a matching `COMPRESS=...` capability.
+
 ## Working with Folders
 
 ### Listing Folders
@@ -67,6 +83,19 @@ let withStatus = try store.listFoldersWithStatus(items: [.messages, .unseen])
 for (folder, status) in withStatus {
     print("\(folder.name): \(status.messages ?? 0) messages, \(status.unseen ?? 0) unread")
 }
+```
+
+### LIST-EXTENDED Return Options
+
+When a server supports RFC 5258 LIST-EXTENDED, you can ask for extra return
+data (like subscription or child info) at the IMAP session level:
+
+```swift
+let mailboxes = try session.listExtended(
+    reference: "",
+    mailbox: "INBOX",
+    returns: [.subscribed, .children]
+)
 ```
 
 ### Opening a Folder

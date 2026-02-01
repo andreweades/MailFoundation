@@ -156,3 +156,58 @@ func imapReplayListNilDelimiter() throws {
     #expect(folder2?.delimiter == "")
     #expect(transport.failures.isEmpty)
 }
+
+@Test("IMAP replay LIST-EXTENDED return options")
+func imapReplayListExtendedReturnOptions() throws {
+    let transport = ImapReplayTransport(steps: [
+        .greeting("dovecot/dovecot.greeting-preauth.txt"),
+        .command("A0001 LIST \"\" INBOX RETURN (SUBSCRIBED CHILDREN)\r\n", fixture: "dovecot/dovecot.list-inbox.txt")
+    ])
+
+    let session = ImapSession(transport: transport, maxReads: 4)
+    _ = try session.connect()
+
+    let list = try session.listExtended(reference: "", mailbox: "INBOX", returns: [.subscribed, .children])
+    let inbox = list.first { $0.name == "INBOX" }
+    #expect(inbox?.hasAttribute(.subscribed) == true)
+    #expect(inbox?.hasAttribute(.hasNoChildren) == true)
+    #expect(transport.failures.isEmpty)
+}
+
+@Test("IMAP replay NOTIFY set")
+func imapReplayNotifySet() throws {
+    let arguments = "SET STATUS (PERSONAL (MailboxName SubscriptionChange)) " +
+        "(SELECTED (MessageNew (UID FLAGS ENVELOPE BODYSTRUCTURE MODSEQ) MessageExpunge FlagChange)) " +
+        "(SUBTREE (INBOX Folder) (MessageNew MessageExpunge MailboxMetadataChange ServerMetadataChange))"
+
+    let transport = ImapReplayTransport(steps: [
+        .greeting("dovecot/dovecot.greeting-preauth.txt"),
+        .command("A0001 NOTIFY \(arguments)\r\n", fixture: "dovecot/dovecot.notify.txt")
+    ])
+
+    let session = ImapSession(transport: transport, maxReads: 4)
+    _ = try session.connect()
+
+    let response = try session.notify(arguments: arguments)
+    #expect(response.isOk)
+    #expect(transport.failures.isEmpty)
+}
+
+@Test("IMAP replay COMPRESS")
+func imapReplayCompress() throws {
+    let transport = ImapReplayTransport(steps: [
+        .greeting("gmail/gmail.greeting.txt"),
+        .command("A0001 CAPABILITY\r\n", fixture: "gmail/authenticate.txt"),
+        .command("A0002 COMPRESS DEFLATE\r\n", fixture: "common/common.compress-ok.txt")
+    ])
+
+    let session = ImapSession(transport: transport, maxReads: 4)
+    _ = try session.connect()
+    _ = try session.capability()
+
+    let response = try session.compress()
+    #expect(response.isOk)
+    #expect(transport.compressionStarted == true)
+    #expect(transport.compressionAlgorithm == "DEFLATE")
+    #expect(transport.failures.isEmpty)
+}

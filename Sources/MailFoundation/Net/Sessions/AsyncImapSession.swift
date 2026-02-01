@@ -612,12 +612,39 @@ public actor AsyncImapSession {
         return responses.map { ImapMailbox(kind: $0.kind, name: $0.name, delimiter: $0.delimiter, attributes: $0.attributes) }
     }
 
+    public func listExtended(
+        reference: String,
+        mailbox: String,
+        returns: [ImapListReturnOption] = [],
+        maxEmptyReads: Int = 10
+    ) async throws -> [ImapMailbox] {
+        let responses = try await listExtendedResponses(
+            reference: reference,
+            mailbox: mailbox,
+            returns: returns,
+            maxEmptyReads: maxEmptyReads
+        )
+        return responses.map { ImapMailbox(kind: $0.kind, name: $0.name, delimiter: $0.delimiter, attributes: $0.attributes) }
+    }
+
     public func listResponses(
         reference: String,
         mailbox: String,
         maxEmptyReads: Int = 10
     ) async throws -> [ImapMailboxListResponse] {
         try await listResponses(command: .list(reference, mailbox), maxEmptyReads: maxEmptyReads)
+    }
+
+    public func listExtendedResponses(
+        reference: String,
+        mailbox: String,
+        returns: [ImapListReturnOption] = [],
+        maxEmptyReads: Int = 10
+    ) async throws -> [ImapMailboxListResponse] {
+        try await listResponses(
+            command: .listExtended(reference, mailbox, returns: returns),
+            maxEmptyReads: maxEmptyReads
+        )
     }
 
     private func listResponses(
@@ -988,6 +1015,92 @@ public actor AsyncImapSession {
                         if response.isOk, let result {
                             await self.applyStatusToSelected(mailbox: mailbox, status: result)
                             return result
+                        }
+                        throw SessionError.imapError(status: response.status, text: response.text)
+                    }
+                }
+            }
+
+            throw SessionError.timeout
+        }
+    }
+
+    public func notify(arguments: String, maxEmptyReads: Int = 10) async throws -> ImapResponse {
+        try await ensureAuthenticated()
+        return try await withSessionTimeout {
+            let command = try await self.client.send(.notify(arguments))
+            var emptyReads = 0
+
+            while emptyReads < maxEmptyReads {
+                try Task.checkCancellation()
+                let messages = await self.client.nextMessages()
+                if messages.isEmpty {
+                    if await self.client.isDisconnected {
+                        throw SessionError.connectionClosed(message: "Connection closed by server.")
+                    }
+                    emptyReads += 1
+                    continue
+                }
+                emptyReads = 0
+                for message in messages {
+                    _ = await self.ingestSelectedState(from: message)
+                    if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                        guard response.isOk else {
+                            throw SessionError.imapError(status: response.status, text: response.text)
+                        }
+                        return response
+                    }
+                }
+            }
+
+            throw SessionError.timeout
+        }
+    }
+
+    public func compress(algorithm: String = "DEFLATE", maxEmptyReads: Int = 10) async throws -> ImapResponse {
+        let current = ImapSessionState(await client.state)
+        switch current {
+        case .connected, .authenticated:
+            break
+        case .selected:
+            throw SessionError.invalidImapState(expected: .authenticated, actual: current)
+        case .disconnected, .authenticating:
+            throw SessionError.invalidImapState(expected: .connected, actual: current)
+        }
+
+        let normalized = algorithm.uppercased()
+        guard let caps = await client.capabilities,
+              caps.rawTokens.contains(where: { $0.uppercased() == "COMPRESS=\(normalized)" }) else {
+            throw SessionError.compressionNotSupported
+        }
+        guard let compressionTransport = transport as? AsyncCompressionTransport else {
+            throw SessionError.compressionNotSupported
+        }
+
+        return try await withSessionTimeout {
+            let command = try await self.client.send(.compress(normalized))
+            var emptyReads = 0
+
+            while emptyReads < maxEmptyReads {
+                try Task.checkCancellation()
+                let messages = await self.client.nextMessages()
+                if messages.isEmpty {
+                    if await self.client.isDisconnected {
+                        throw SessionError.connectionClosed(message: "Connection closed by server.")
+                    }
+                    emptyReads += 1
+                    continue
+                }
+                emptyReads = 0
+                for message in messages {
+                    _ = await self.ingestSelectedState(from: message)
+                    if let response = message.response, case let .tagged(tag) = response.kind, tag == command.tag {
+                        if response.isOk {
+                            try await compressionTransport.startCompression(algorithm: normalized)
+                            return response
+                        }
+                        if response.text.uppercased().contains("COMPRESSIONACTIVE") {
+                            return response
                         }
                         throw SessionError.imapError(status: response.status, text: response.text)
                     }
