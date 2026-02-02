@@ -22,8 +22,14 @@
 // THE SOFTWARE.
 //
 
+import Foundation
 import Testing
 @testable import MailFoundation
+
+private func memoryStreamOutput(_ stream: OutputStream) -> String {
+    let data = stream.property(forKey: .dataWrittenToMemoryStreamKey) as? Data ?? Data()
+    return String(decoding: data, as: UTF8.self)
+}
 
 @Test("IMAP client IDLE not supported (replay)")
 func imapClientIdleNotSupportedReplay() {
@@ -41,6 +47,41 @@ func imapClientIdleNotSupportedReplay() {
     #expect(transport.failures.isEmpty)
 }
 
+@Test("IMAP client protocol logger redacts on IDLE failure (replay)")
+func imapClientProtocolLoggerRedactsOnIdleFailureReplay() {
+    let stream = OutputStream.toMemory()
+    let logger = ProtocolLogger(stream: stream, leaveOpen: true)
+    logger.logTimestamps = false
+    logger.redactSecrets = true
+    logger.clientPrefix = "C: "
+    logger.serverPrefix = "S: "
+
+    let transport = ImapReplayTransport(steps: [
+        .command("A0001 LOGIN bob secret\r\n", fixture: "common/common.login-capability-no-idle.txt"),
+        .command("A0002 IDLE\r\n", fixture: "common/common.idle-not-supported.txt")
+    ])
+
+    let client = ImapClient(protocolLogger: logger)
+    client.connect(transport: transport)
+
+    let loginCommand = client.send(.login("bob", "secret"))
+    _ = client.waitForTagged(loginCommand.tag, maxReads: 2)
+
+    let idleCommand = client.send(.idle)
+    let idleResponse = client.waitForTagged(idleCommand.tag, maxReads: 2)
+
+    logger.close()
+    stream.close()
+
+    let output = memoryStreamOutput(stream)
+    #expect(output.contains("C: A0001 LOGIN ******** ********"))
+    #expect(output.contains("S: A0002 BAD IDLE not supported."))
+    #expect(!output.contains("bob"))
+    #expect(!output.contains("secret"))
+    #expect(idleResponse?.status == .bad)
+    #expect(transport.failures.isEmpty)
+}
+
 @Test("IMAP client NOTIFY not supported (replay)")
 func imapClientNotifyNotSupportedReplay() {
     let transport = ImapReplayTransport(steps: [
@@ -54,6 +95,41 @@ func imapClientNotifyNotSupportedReplay() {
     let response = client.waitForTagged(command.tag, maxReads: 2)
 
     #expect(response?.status == .bad)
+    #expect(transport.failures.isEmpty)
+}
+
+@Test("IMAP client protocol logger redacts on NOTIFY failure (replay)")
+func imapClientProtocolLoggerRedactsOnNotifyFailureReplay() {
+    let stream = OutputStream.toMemory()
+    let logger = ProtocolLogger(stream: stream, leaveOpen: true)
+    logger.logTimestamps = false
+    logger.redactSecrets = true
+    logger.clientPrefix = "C: "
+    logger.serverPrefix = "S: "
+
+    let transport = ImapReplayTransport(steps: [
+        .command("A0001 LOGIN bob secret\r\n", fixture: "common/common.login-capability-no-notify.txt"),
+        .command("A0002 NOTIFY NONE\r\n", fixture: "common/common.notify-not-supported.txt")
+    ])
+
+    let client = ImapClient(protocolLogger: logger)
+    client.connect(transport: transport)
+
+    let loginCommand = client.send(.login("bob", "secret"))
+    _ = client.waitForTagged(loginCommand.tag, maxReads: 2)
+
+    let notifyCommand = client.send(.notify("NONE"))
+    let notifyResponse = client.waitForTagged(notifyCommand.tag, maxReads: 2)
+
+    logger.close()
+    stream.close()
+
+    let output = memoryStreamOutput(stream)
+    #expect(output.contains("C: A0001 LOGIN ******** ********"))
+    #expect(output.contains("S: A0002 BAD NOTIFY not supported."))
+    #expect(!output.contains("bob"))
+    #expect(!output.contains("secret"))
+    #expect(notifyResponse?.status == .bad)
     #expect(transport.failures.isEmpty)
 }
 
