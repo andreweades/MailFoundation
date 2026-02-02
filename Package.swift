@@ -19,7 +19,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.1.0"),
-        .package(url: "https://github.com/migueldeicaza/MimeFoundation", branch: "main")
+        .package(url: "https://github.com/andreweades/MimeFoundation", branch: "main")
     ],
     targets: [
         .systemLibrary(
